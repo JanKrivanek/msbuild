@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <Import Project="..\Shared\FileSystemSources.proj" />
   <Import Project="..\Shared\DebuggingSources.proj" />
@@ -237,6 +237,7 @@
     <PackageReference Include="System.Runtime" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\MyLogger\MyLogger.csproj" Condition="'$(TargetFrameworkIdentifier)' != '.NETFramework' AND '$(DotNetBuildFromSource)' != 'true'" />
     <ProjectReference Include="..\Build\Microsoft.Build.csproj" />
     <ProjectReference Include="..\Framework\Microsoft.Build.Framework.csproj" PrivateAssets="All" />
     <ProjectReference Include="..\Tasks\Microsoft.Build.Tasks.csproj" />
