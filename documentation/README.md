@@ -49,6 +49,7 @@ The folder contains collection of docs and references for MSBuild, detailed info
 * [Reserved and built-in properties](Built-in-Propeties.md)
 * [`ProjectReference`](ProjectReference-Protocol.md)
 * [MSBuild Server](MSBuild-Server.md)
+* [Nodes orchestration](wiki/Nodes-Orchestration.md)
 * [Low priority nodes](specs/low-priority-switch.md)
 * [Project cache plugin](specs/project-cache.md)
 * [Support for remote host objects](specs/remote-host-object.md)
@@ -59,7 +60,6 @@ The folder contains collection of docs and references for MSBuild, detailed info
 * [Target maps](wiki/Target-Maps.md)
 * [Managing parallelism in MSBuild](specs/resource-management.md)
 * [SDK resolution](specs/sdk-resolvers-algorithm.md)
-* [Nodes orchestration](wiki/Nodes-Orchestration.md)
 
 ### Tasks
 
