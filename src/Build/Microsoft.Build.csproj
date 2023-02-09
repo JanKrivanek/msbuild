@@ -27,6 +27,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\MyCustomTask\MyCustomTask.csproj" Condition="'$(TargetFrameworkIdentifier)' != '.NETFramework' AND '$(DotNetBuildFromSource)' != 'true'" />
     <ProjectReference Include="..\Framework\Microsoft.Build.Framework.csproj" />
     <ProjectReference Include="..\StringTools\StringTools.csproj" />
 
