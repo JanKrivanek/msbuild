@@ -10,7 +10,14 @@ namespace Runner
         static async Task Main(string[] args)
         {
             Console.WriteLine("Hello, World!");
-            await new NugetStats().AsyncMethod();
+            //await new NugetStats().AsyncMethod();
+
+            NugetStats nugetStats = new();
+            await nugetStats.WaitForInitialization().ConfigureAwait(false);
+            foreach (PackageStatsInfo nugetStatsCommunityPackage in nugetStats.CommunityPackages)
+            {
+                Console.WriteLine(nugetStatsCommunityPackage.Name + ":" + nugetStatsCommunityPackage.DownloadsCount);
+            }
         }
     }
 }
