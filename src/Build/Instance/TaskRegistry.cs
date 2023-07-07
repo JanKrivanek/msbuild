@@ -928,7 +928,8 @@ namespace Microsoft.Build.Execution
                         paramHash = 0;
                     }
 
-                    return nameHash ^ paramHash;
+                    var res = nameHash ^ paramHash;
+                    return res;
                 }
 
                 /// <summary>

@@ -34,6 +34,38 @@ namespace Microsoft.Build.UnitTests.BackEnd
         }
     }
 
+    public class SimpleTask1 : Task
+    {
+        public override bool Execute()
+        {
+            return true;
+        }
+    }
+
+    public class ZimpleTask1 : Task
+    {
+        public override bool Execute()
+        {
+            return true;
+        }
+    }
+
+    public class ATask : Task
+    {
+        public override bool Execute()
+        {
+            return true;
+        }
+    }
+
+    public class A : Task
+    {
+        public override bool Execute()
+        {
+            return true;
+        }
+    }
+
     /// <summary>
     /// Test the task registry
     /// </summary>
@@ -644,13 +676,142 @@ namespace Microsoft.Build.UnitTests.BackEnd
         }
 
         [Fact]
+        public void Foo1()
+        {
+            Assert.NotNull(_testTaskLocation); // "Need a test task to run this test"
+
+            List<ProjectUsingTaskElement> elementList = new List<ProjectUsingTaskElement>();
+            ProjectRootElement project = ProjectRootElement.Create();
+
+            ProjectUsingTaskElement element = project.AddUsingTask(TestTaskName, _testTaskLocation, null);
+            element.Architecture = "x86";
+            elementList.Add(element);
+
+            ProjectUsingTaskElement secondElement = project.AddUsingTask(TestTaskName, _testTaskLocation, null);
+            secondElement.Architecture = "x64";
+            elementList.Add(secondElement);
+
+            TaskRegistry registry = CreateTaskRegistryAndRegisterTasks(elementList);
+
+            // no parameters
+            RetrieveAndValidateRegisteredTaskRecord(
+                registry,
+                exactMatchRequired: false,
+                runtime: null,
+                architecture: null,
+                shouldBeRetrieved: true,
+                shouldBeRetrievedFromCache: false,
+                expectedRuntime: XMakeAttributes.MSBuildRuntimeValues.any,
+                expectedArchitecture: "x86");
+
+            // no parameters, fuzzy match
+            RetrieveAndValidateRegisteredTaskRecord(
+                registry,
+                exactMatchRequired: false,
+                runtime: null,
+                architecture: null,
+                shouldBeRetrieved: true,
+                shouldBeRetrievedFromCache: true,
+                expectedRuntime: XMakeAttributes.MSBuildRuntimeValues.any,
+                expectedArchitecture: "x86");
+        }
+
+        [Theory]
+        [InlineData("SimpleTask1")]
+        [InlineData("ZimpleTask1")]
+        [InlineData("ATask")]
+        [InlineData("A")]
+        public void Foo2(string taskName)
+        {
+            Assert.NotNull(_testTaskLocation); // "Need a test task to run this test"
+
+            List<ProjectUsingTaskElement> elementList = new List<ProjectUsingTaskElement>();
+            ProjectRootElement project = ProjectRootElement.Create();
+
+            ProjectUsingTaskElement element = project.AddUsingTask(taskName, _testTaskLocation, null);
+            element.Architecture = "x86";
+            elementList.Add(element);
+
+            ProjectUsingTaskElement secondElement = project.AddUsingTask("Build.UnitTests.BackEnd" + taskName, _testTaskLocation, null);
+            secondElement.Architecture = "x64";
+            elementList.Add(secondElement);
+
+            TaskRegistry registry = CreateTaskRegistryAndRegisterTasks(elementList);
+
+            // no parameters
+            RetrieveAndValidateRegisteredTaskRecord(
+                registry,
+                exactMatchRequired: false,
+                runtime: null,
+                architecture: null,
+                shouldBeRetrieved: true,
+                shouldBeRetrievedFromCache: false,
+                expectedRuntime: XMakeAttributes.MSBuildRuntimeValues.any,
+                expectedArchitecture: "x86",
+                taskName: taskName);
+
+            // no parameters, fuzzy match
+            RetrieveAndValidateRegisteredTaskRecord(
+                registry,
+                exactMatchRequired: false,
+                runtime: null,
+                architecture: null,
+                shouldBeRetrieved: true,
+                shouldBeRetrievedFromCache: true,
+                expectedRuntime: XMakeAttributes.MSBuildRuntimeValues.any,
+                expectedArchitecture: "x86",
+                taskName: taskName);
+        }
+
+        [Fact]
         public void OverriddenTask_MultipleOverridesCauseMSB4275()
         {
             string proj =
                 $"<Project>" +
                     $"<Target Name='Bar'/>" +
-                    $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)task.dll' Override='true' Architecture='x64' />" +
-                    $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)task2.dll' Override='true' Architecture='x86'/>" +
+                    $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)tafdfdsk.dll' Override='true' Architecture='x64' />" +
+                    $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)taszfdfdk2.dll' Override='true' Architecture='x86'/>" +
+                $"</Project>";
+
+            MockLogger logger = new MockLogger(_output);
+            using (var env = TestEnvironment.Create(_output))
+            {
+                var testProject = env.CreateTestProjectWithFiles(ObjectModelHelpers.CleanupFileContents(proj));
+
+                using (var buildManager = new BuildManager())
+                {
+                    BuildParameters parameters = new BuildParameters()
+                    {
+                        Loggers = new[] { logger }
+                    };
+
+                    var request = new BuildRequestData(
+                        testProject.ProjectFile,
+                        new Dictionary<string, string>(),
+                        MSBuildConstants.CurrentToolsVersion,
+                        Array.Empty<string>(),
+                        null);
+
+                    var result = buildManager.Build(
+                        parameters,
+                        request);
+                    result.OverallResult.ShouldBe(BuildResultCode.Success);
+
+                    // We should see MSB4275: Multiple usingtask overrides with the same name
+                    logger.ErrorCount.ShouldBe(1);
+                    logger.AssertLogContains("MSB4275");
+                }
+            }
+        }
+
+        [Fact]
+        public void Foo()
+        {
+            string proj =
+                $"<Project>" +
+                $"<Target Name='Bar'/>" +
+                $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)task.dll' Architecture='x64' />" +
+                $"<UsingTask TaskName='Foo' AssemblyFile='$(Outdir)task2.dll' Runtime='CLR4'/>" +
                 $"</Project>";
 
             MockLogger logger = new MockLogger(_output);
@@ -2004,10 +2165,11 @@ namespace Microsoft.Build.UnitTests.BackEnd
                                                             bool shouldBeRetrieved,
                                                             bool shouldBeRetrievedFromCache,
                                                             string expectedRuntime,
-                                                            string expectedArchitecture)
+                                                            string expectedArchitecture,
+                                                            string taskName = TestTaskName)
         {
             bool retrievedFromCache;
-            var record = registry.GetTaskRegistrationRecord(TestTaskName, null, taskParameters, exactMatchRequired, _targetLoggingContext, _elementLocation, out retrievedFromCache);
+            var record = registry.GetTaskRegistrationRecord(taskName, null, taskParameters, exactMatchRequired, _targetLoggingContext, _elementLocation, out retrievedFromCache);
 
             if (shouldBeRetrieved)
             {
@@ -2047,7 +2209,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
                                                             bool shouldBeRetrieved,
                                                             bool shouldBeRetrievedFromCache,
                                                             string expectedRuntime,
-                                                            string expectedArchitecture)
+                                                            string expectedArchitecture,
+                                                            string taskName = TestTaskName)
         {
             Dictionary<string, string> parameters = null;
             if (runtime != null || architecture != null)
@@ -2059,7 +2222,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 };
             }
 
-            RetrieveAndValidateRegisteredTaskRecord(registry, exactMatchRequired, parameters, shouldBeRetrieved, shouldBeRetrievedFromCache, expectedRuntime, expectedArchitecture);
+            RetrieveAndValidateRegisteredTaskRecord(registry, exactMatchRequired, parameters, shouldBeRetrieved, shouldBeRetrievedFromCache, expectedRuntime, expectedArchitecture, taskName);
         }
 
         /// <summary>
