@@ -196,6 +196,8 @@ internal sealed class TerminalLogger : INodeLogger
         Initialize(eventSource);
     }
 
+    private Action? _deregisterAction;
+
     /// <inheritdoc/>
     public void Initialize(IEventSource eventSource)
     {
@@ -210,11 +212,27 @@ internal sealed class TerminalLogger : INodeLogger
         eventSource.MessageRaised += MessageRaised;
         eventSource.WarningRaised += WarningRaised;
         eventSource.ErrorRaised += ErrorRaised;
+
+        _deregisterAction = () =>
+        {
+            // eventSource.BuildStarted -= BuildStarted;
+            // eventSource.BuildFinished -= BuildFinished;
+            // eventSource.ProjectStarted -= ProjectStarted;
+            // eventSource.ProjectFinished -= ProjectFinished;
+            eventSource.TargetStarted -= TargetStarted;
+            eventSource.TargetFinished -= TargetFinished;
+            // eventSource.TaskStarted -= TaskStarted;
+
+            // eventSource.MessageRaised -= MessageRaised;
+            // eventSource.WarningRaised -= WarningRaised;
+            // eventSource.ErrorRaised -= ErrorRaised;
+        };
     }
 
     /// <inheritdoc/>
     public void Shutdown()
     {
+        _deregisterAction = null;
         Terminal.Dispose();
     }
 
@@ -489,6 +507,12 @@ internal sealed class TerminalLogger : INodeLogger
     /// </summary>
     private void TargetStarted(object sender, TargetStartedEventArgs e)
     {
+        if (e.TargetName.Equals("VSTest"))
+        {
+            _deregisterAction?.Invoke();
+            return;
+        }
+
         var buildEventContext = e.BuildEventContext;
         if (_restoreContext is null && buildEventContext is not null && _projects.TryGetValue(new ProjectContext(buildEventContext), out Project? project))
         {
