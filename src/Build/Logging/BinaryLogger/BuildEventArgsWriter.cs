@@ -147,6 +147,15 @@ namespace Microsoft.Build.Logging
             BinaryLogRecordKind eventKind = WriteCore(e);
 
             FlushRecordToFinalStream(eventKind, currentRecordStream);
+
+            if (e is TargetStartedEventArgs)
+            {
+                this.currentRecordStream.SetLength(0);
+                BinaryLogRecordKind eventKind2 = WriteCore(e);
+                eventKind2 = (BinaryLogRecordKind)(((int)BinaryLogRecordKind.AssemblyLoad) + 5);
+
+                FlushRecordToFinalStream(eventKind2, currentRecordStream);
+            }
         }
 
         private void FlushRecordToFinalStream(BinaryLogRecordKind recordKind, MemoryStream recordStream)
@@ -382,6 +391,7 @@ namespace Microsoft.Build.Logging
             WriteDeduplicatedString(e.TargetFile);
             WriteDeduplicatedString(e.ParentTarget);
             Write((int)e.BuildReason);
+            WriteDeduplicatedString("BAM!");
 
             return BinaryLogRecordKind.TargetStarted;
         }
@@ -392,6 +402,7 @@ namespace Microsoft.Build.Logging
             Write(e.Succeeded);
             WriteDeduplicatedString(e.ProjectFile);
             WriteDeduplicatedString(e.TargetFile);
+            WriteDeduplicatedString("BAM!");
             WriteDeduplicatedString(e.TargetName);
             WriteTaskItemList(e.TargetOutputs);
 
