@@ -515,6 +515,8 @@ namespace Microsoft.Build.Execution
 
             ProjectRootElement xml = ProjectRootElement.OpenProjectOrSolution(projectFile, globalProperties, toolsVersion, buildParameters.ProjectRootElementCache, false /*Not explicitly loaded*/);
 
+            //loggingService.LogBuildEvent(new MyEventArgs(xml));
+
             Initialize(xml, globalProperties, toolsVersion, null, 0 /* no solution version specified */, buildParameters, loggingService, buildEventContext, sdkResolverService, submissionId, projectLoadSettings);
         }
 

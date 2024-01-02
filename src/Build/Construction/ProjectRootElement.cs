@@ -146,6 +146,14 @@ namespace Microsoft.Build.Construction
 
         internal ProjectRootElementLink RootLink => (ProjectRootElementLink)Link;
 
+        //private string s = S();    
+
+        //private static string S()
+        //{
+        //    Debugger.Launch();
+        //    return "x";
+        //}
+
         /// <summary>
         /// External projects support
         /// </summary>

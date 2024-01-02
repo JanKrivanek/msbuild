@@ -1,6 +1,7 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using Microsoft.Build.Evaluation;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 
@@ -86,6 +87,13 @@ namespace Microsoft.Build.BackEnd.Logging
             {
                 // Telemetry events aren't part of "all" so they need to be forwarded separately
                 eventSource2.TelemetryLogged += EventSource_AnyEventRaised;
+            }
+
+            IEventSource66 eventSource66 = eventSource as IEventSource66;
+            if (eventSource66 != null)
+            {
+                // MyEventLogged isn't part of "all" so they need to be forwarded separately
+                eventSource66.MyEventLogged += EventSource_AnyEventRaised;
             }
         }
 

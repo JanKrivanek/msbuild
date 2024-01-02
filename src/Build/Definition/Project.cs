@@ -39,6 +39,42 @@ namespace Microsoft.Build.Evaluation
 {
     using Utilities = Microsoft.Build.Internal.Utilities;
 
+
+    public class MyEventArgs : BuildEventArgs
+    {
+        public ProjectRootElement ProjectRootElement { get; private set; }
+
+        public MyEventArgs(ProjectRootElement projectRootElement) => ProjectRootElement = projectRootElement;
+
+        internal override void WriteToStream(BinaryWriter writer)
+        {
+            // intentionally nothing serialized
+        }
+
+        internal override void CreateFromStream(BinaryReader reader, int version)
+        {
+            // intentionally nothing deserialized
+        }
+    }
+
+    /// <summary>
+    /// Type of handler for TelemetryLogged events
+    /// </summary>
+    public delegate void MyEventHandler(object sender, MyEventArgs e);
+
+    /// <summary>
+    /// This interface defines the events raised by the build engine.
+    /// Loggers use this interface to subscribe to the events they
+    /// are interested in receiving.
+    /// </summary>
+    public interface IEventSource66 : IEventSource
+    {
+        /// <summary>
+        /// this event is raised to when telemetry is logged.
+        /// </summary>
+        event MyEventHandler MyEventLogged;
+    }
+
     /// <summary>
     /// Represents an evaluated project with design time semantics.
     /// Always backed by XML; can be built directly, or an instance can be cloned off to add virtual items/properties and build.
@@ -1949,12 +1985,17 @@ namespace Microsoft.Build.Evaluation
 
                 try
                 {
-                    Xml = ProjectRootElement.OpenProjectOrSolution(
+                    var xml = ProjectRootElement.OpenProjectOrSolution(
                         projectFile,
                         globalProperties,
                         toolsVersion,
                         ProjectCollection.ProjectRootElementCache,
                         true /*Explicitly loaded*/);
+
+                    Xml = xml;
+                    //Debugger.Launch();
+                    //LoggingService.LogBuildEvent(new MyEventArgs(xml));
+
                 }
                 catch (InvalidProjectFileException ex)
                 {

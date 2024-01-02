@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Diagnostics;
+using Microsoft.Build.Evaluation;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 
@@ -18,7 +20,7 @@ namespace Microsoft.Build.BackEnd.Logging
 #if FEATURE_APPDOMAIN
         MarshalByRefObject,
 #endif
-        IEventSource4, IBuildEventSink
+        IEventSource4, IBuildEventSink, IEventSource66
     {
         #region Events
 
@@ -98,6 +100,8 @@ namespace Microsoft.Build.BackEnd.Logging
         /// This event is raised to log telemetry.
         /// </summary>
         public event TelemetryEventHandler TelemetryLogged;
+
+        public event MyEventHandler MyEventLogged;
         #endregion
 
         #region Properties
@@ -262,6 +266,10 @@ namespace Microsoft.Build.BackEnd.Logging
                     break;
                 case TelemetryEventArgs telemetryEvent:
                     RaiseTelemetryEvent(null, telemetryEvent);
+                    break;
+                case MyEventArgs myEvent:
+                    Debugger.Launch();
+                    RaiseMyEvent(null, myEvent);
                     break;
                 default:
                     ErrorUtilities.ThrowInternalError("Unknown event args type.");
@@ -933,6 +941,31 @@ namespace Microsoft.Build.BackEnd.Logging
                         throw;
                     }
 
+                    InternalLoggerException.Throw(exception, buildEvent, "FatalErrorWhileLogging", false);
+                }
+            }
+        }
+
+        private void RaiseMyEvent(object sender, MyEventArgs buildEvent)
+        {
+            if (MyEventLogged != null)
+            {
+                try
+                {
+                    MyEventLogged(sender, buildEvent);
+                }
+                catch (LoggerException)
+                {
+                    this.UnregisterAllEventHandlers();
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    this.UnregisterAllEventHandlers();
+                    if (ExceptionHandling.IsCriticalException(exception))
+                    {
+                        throw;
+                    }
                     InternalLoggerException.Throw(exception, buildEvent, "FatalErrorWhileLogging", false);
                 }
             }

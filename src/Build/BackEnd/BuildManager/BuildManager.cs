@@ -2944,6 +2944,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         private ILoggingService CreateLoggingService(IEnumerable<ILogger> loggers, IEnumerable<ForwardingLoggerRecord> forwardingLoggers, ISet<string> warningsAsErrors, ISet<string> warningsNotAsErrors, ISet<string> warningsAsMessages)
         {
+            //Debugger.Launch();
+
             Debug.Assert(Monitor.IsEntered(_syncLock));
 
             int cpuCount = _buildParameters.MaxNodeCount;

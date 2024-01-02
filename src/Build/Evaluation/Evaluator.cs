@@ -599,6 +599,10 @@ namespace Microsoft.Build.Evaluation
         /// </summary>
         private void Evaluate()
         {
+            Debugger.Launch();
+            _evaluationLoggingContext.LogBuildEvent(new MyEventArgs(_projectRootElement));
+            //todo: project from ctor is not stored in locals - but we cann pass here and invoke other event
+
             string projectFile = String.IsNullOrEmpty(_projectRootElement.ProjectFileLocation.File) ? "(null)" : _projectRootElement.ProjectFileLocation.File;
             using (AssemblyLoadsTracker.StartTracking(_evaluationLoggingContext, AssemblyLoadingContext.Evaluation))
             using (_evaluationProfiler.TrackPass(EvaluationPass.TotalEvaluation))

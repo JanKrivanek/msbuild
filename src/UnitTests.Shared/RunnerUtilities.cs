@@ -108,7 +108,7 @@ namespace Microsoft.Build.UnitTests.Shared
                 p.BeginErrorReadLine();
                 p.StandardInput.Dispose();
 
-                if (!p.WaitForExit(30_000))
+                if (!p.WaitForExit(30_000_000))
                 {
                     // Let's not create a unit test for which we need more than 30 sec to execute.
                     // Please consider carefully if you would like to increase the timeout.

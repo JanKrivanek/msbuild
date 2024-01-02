@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Reflection;
 using System.Text;
 
 using Microsoft.Build.BackEnd.Logging;
@@ -12,6 +14,7 @@ using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Logging;
+using Microsoft.Build.UnitTests.Logging;
 using Microsoft.Build.UnitTests.Shared;
 using Shouldly;
 using Xunit;
@@ -189,6 +192,113 @@ namespace Microsoft.Build.UnitTests
             }
         }
 
+        public class MyLogsFwder : IForwardingLogger
+        {
+            public static string LoggerName()
+            {
+#if FEATURE_ASSEMBLY_LOCATION
+                Assembly thisAssembly = Assembly.GetAssembly(typeof(MyLogsFwder));
+#else
+                Assembly thisAssembly = typeof(MyLogsFwder).GetTypeInfo().Assembly;
+#endif
+
+                string className = "Microsoft.Build.UnitTests.BinaryLoggerTests+MyLogsFwder";
+                string loggerAssemblyName = thisAssembly.FullName;
+                loggerAssemblyName = "Microsoft.Build.Engine.UnitTests.dll";
+                return $"{className},{loggerAssemblyName}";
+                //LoggerDescription centralLoggerDescrption = CreateLoggerDescription(className, loggerAssemblyName, true);
+            }
+
+            public LoggerVerbosity Verbosity { get; set; }
+            public string Parameters { get; set; }
+
+            public void Initialize(IEventSource eventSource)
+            {
+                //Debugger.Launch();
+
+                eventSource.MessageRaised += (s, e) =>
+                {
+                    if (e?.Message?.Contains("Hello") ?? false)
+                    {
+                        // create synthetic event here
+                        BuildEventArgs synthetic = new BuildMessageEventArgs("Synthetic: " + e.Message, e.HelpKeyword, e.SenderName, e.Importance);
+                        BuildEventRedirector.ForwardEvent(synthetic);
+                    }
+                };
+
+                IEventSource66 eventSource66 = eventSource as IEventSource66;
+                if (eventSource66 != null)
+                {
+                    // Debugger.Launch();
+
+                    // MyEventLogged isn't part of "all" so they need to be forwarded separately
+                    eventSource66.MyEventLogged += (s, e) =>
+                    {
+                        Debugger.Launch();
+
+                        Console.WriteLine($"MyLogsFwder: MyEventLogged: ProjectRootElement is null: {e.ProjectRootElement == null}");
+                        //BuildEventRedirector.ForwardEvent(e);
+
+                        BuildEventArgs synthetic = new BuildMessageEventArgs("Synthetic: MyEventArgs fwded: " + e.Message, e.HelpKeyword, e.SenderName, MessageImportance.Low);
+
+                        BuildEventRedirector.ForwardEvent(synthetic);
+                    };
+                }
+            }
+
+            public void Shutdown() { /*this is it*/ }
+
+            public void Initialize(IEventSource eventSource, int nodeCount) => Initialize(eventSource);
+
+            public IEventRedirector BuildEventRedirector { get; set; }
+            public int NodeId { get; set; }
+        }
+
+        public class MyLogsConsumer : ILogger
+        {
+            public static string LoggerName()
+            {
+                string className = "Microsoft.Build.UnitTests.BinaryLoggerTests+MyLogsConsumer";
+                string loggerAssemblyName = "Microsoft.Build.Engine.UnitTests.dll";
+                return $"{className},{loggerAssemblyName}";
+            }
+
+            public LoggerVerbosity Verbosity { get; set; }
+            public string Parameters { get; set; }
+
+            public void Initialize(IEventSource eventSource)
+            {
+                eventSource.AnyEventRaised += (s, e) =>
+                {
+                    Console.WriteLine($"MyLogsConsumer: {e.GetType().Name}: {e.Message}");
+
+                    //if (e is not BuildMessageEventArgs msg)
+                    //{
+                    //    throw new Exception("Expected BuildMessageEventArgs");
+                    //}
+
+                    //if (!msg.Message.StartsWith("Synthetic: "))
+                    //{
+                    //    throw new Exception("Expected to start with 'Synthetic'");
+                    //}
+                };
+
+                IEventSource66 eventSource66 = eventSource as IEventSource66;
+                if (eventSource66 != null)
+                {
+                    // MyEventLogged isn't part of "all" so they need to be forwarded separately
+                    eventSource66.MyEventLogged += (s, e) =>
+                    {
+                        Debugger.Launch();
+                        Console.WriteLine($"MyLogsConsumer: MyEventLogged: ProjectRootElement is null: {e.ProjectRootElement == null}");
+                    };
+                }
+            }
+
+            public void Shutdown() { /*this is it*/ }
+        }
+
+
         [WindowsFullFrameworkOnlyFact(additionalMessage: "Tests if the AppDomain used to load the task is included in the log text for the event, which is true only on Framework.")]
         public void AssemblyLoadsDuringTaskRunLoggedWithAppDomain() => AssemblyLoadsDuringTaskRun("AppDomain: [Default]");
 
@@ -233,7 +343,10 @@ namespace Microsoft.Build.UnitTests
                 TransientTestFile projectFile = env.CreateFile(logFolder, "myProj.proj", contents);
                 
                 env.SetEnvironmentVariable("MSBUILDNOINPROCNODE", "1");
-                RunnerUtilities.ExecMSBuild($"{projectFile.Path} -nr:False -bl:{_logFile} -flp1:logfile={Path.Combine(logFolder.Path, "logFile.log")};verbosity=diagnostic -flp2:logfile={Path.Combine(logFolder.Path, "logFile2.log")};verbosity=normal", out bool success);
+                string distributedLoggerParam = $@"-distributedlogger:{MyLogsConsumer.LoggerName()}*{MyLogsFwder.LoggerName()}";
+                _env.Output.WriteLine(distributedLoggerParam);
+                string output = RunnerUtilities.ExecMSBuild($"{projectFile.Path} -nr:False -bl:{_logFile} -flp1:logfile={Path.Combine(logFolder.Path, "logFile.log")};verbosity=diagnostic -flp2:logfile={Path.Combine(logFolder.Path, "logFile2.log")};verbosity=normal {distributedLoggerParam}", out bool success);
+                _env.Output.WriteLine(output);
                 success.ShouldBeTrue();
 
                 string assemblyLoadedEventText =

@@ -14,6 +14,7 @@ using Microsoft.Build.Collections;
 using Microsoft.Build.Framework.Profiler;
 using System.Collections;
 using System.Linq;
+using Microsoft.Build.Evaluation;
 #endif
 
 #if FEATURE_APPDOMAIN
@@ -205,6 +206,8 @@ namespace Microsoft.Build.Shared
         /// Event is <see cref="ExtendedCriticalBuildMessageEventArgs"/>
         /// </summary>
         ExtendedCriticalBuildMessageEvent = 33,
+
+        MyEvent = 34,
     }
     #endregion
 
@@ -610,6 +613,7 @@ namespace Microsoft.Build.Shared
                 LoggingEventType.PropertyInitialValueSet => new PropertyInitialValueSetEventArgs(),
                 LoggingEventType.PropertyReassignment => new PropertyReassignmentEventArgs(),
                 LoggingEventType.UninitializedPropertyRead => new UninitializedPropertyReadEventArgs(),
+                LoggingEventType.MyEvent => new Microsoft.Build.Evaluation.MyEventArgs(null),
 #endif
                 _ => throw new InternalErrorException("Should not get to the default of GetBuildEventArgFromId ID: " + _eventType)
             };
@@ -720,6 +724,10 @@ namespace Microsoft.Build.Shared
             else if (eventType == typeof(UninitializedPropertyReadEventArgs))
             {
                 return LoggingEventType.UninitializedPropertyRead;
+            }
+            else if (eventType == typeof(Microsoft.Build.Evaluation.MyEventArgs))
+            {
+                return LoggingEventType.MyEvent;
             }
 #endif
             else if (eventType == typeof(TargetStartedEventArgs))

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -1640,6 +1641,11 @@ namespace Microsoft.Build.BackEnd.Logging
         private void RouteBuildEvent(BuildEventArgs eventArg)
         {
             TryRaiseProjectStartedEvent(eventArg);
+
+            if (eventArg is MyEventArgs)
+            {
+                Debugger.Launch();
+            }
 
             // The event has not been through a filter yet. All events must go through a filter before they make it to a logger
             if (_filterEventSource != null) // Loggers may not be registered
