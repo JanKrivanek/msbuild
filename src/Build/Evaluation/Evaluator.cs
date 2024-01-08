@@ -9,6 +9,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.Build.Analyzers;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.BackEnd.Components.Logging;
 using Microsoft.Build.BackEnd.Components.RequestBuilder;
@@ -190,6 +191,16 @@ namespace Microsoft.Build.Evaluation
 
         private readonly bool _isRunningInVisualStudio;
 
+        private static readonly BuildAnalysisManager s_buildAnalysisManager = CreateBuildAnalysisManager();
+
+        private static BuildAnalysisManager CreateBuildAnalysisManager()
+        {
+            var buildAnalysisManager = new BuildAnalysisManager();
+            buildAnalysisManager.RegisterAnalyzer(new MySampleSyntaxAnalyzer());
+            buildAnalysisManager.RegisterAnalyzer(new MyConditionAnalyzer());
+            return buildAnalysisManager;
+        }
+
         /// <summary>
         /// Private constructor called by the static Evaluate method.
         /// </summary>
@@ -212,6 +223,8 @@ namespace Microsoft.Build.Evaluation
             ILoggingService loggingService,
             BuildEventContext buildEventContext)
         {
+            // Debugger.Launch();
+
             ErrorUtilities.VerifyThrowInternalNull(data, nameof(data));
             ErrorUtilities.VerifyThrowInternalNull(projectRootElementCache, nameof(projectRootElementCache));
             ErrorUtilities.VerifyThrowInternalNull(evaluationContext, nameof(evaluationContext));
@@ -277,6 +290,10 @@ namespace Microsoft.Build.Evaluation
             _streamImports = new List<string>();
             // When the imports are concatenated with a semicolon, this automatically prepends a semicolon if and only if another element is later added.
             _streamImports.Add(string.Empty);
+
+
+            // _evaluationLoggingContext.LogBuildEvent(new MyEventArgs(_projectRootElement));
+            // project
         }
 
         /// <summary>
@@ -339,6 +356,9 @@ namespace Microsoft.Build.Evaluation
                 buildEventContext);
 
             evaluator.Evaluate();
+
+            // todo - report project only - here after we're done evaluating
+
             MSBuildEventSource.Log.EvaluateStop(root.ProjectFileLocation.File);
         }
 
@@ -599,7 +619,13 @@ namespace Microsoft.Build.Evaluation
         /// </summary>
         private void Evaluate()
         {
+            // Debugger.Launch();
+            
             string projectFile = String.IsNullOrEmpty(_projectRootElement.ProjectFileLocation.File) ? "(null)" : _projectRootElement.ProjectFileLocation.File;
+
+            CentralBuildAnalyzerContext.CurrentProjectPath = projectFile;
+            s_buildAnalysisManager.LoggingContext = _evaluationLoggingContext;
+
             using (AssemblyLoadsTracker.StartTracking(_evaluationLoggingContext, AssemblyLoadingContext.Evaluation))
             using (_evaluationProfiler.TrackPass(EvaluationPass.TotalEvaluation))
             {
@@ -815,6 +841,10 @@ namespace Microsoft.Build.Evaluation
                 properties = Traits.LogAllEnvironmentVariables ? _data.Properties : FilterOutEnvironmentDerivedProperties(_data.Properties);
                 items = _data.Items;
             }
+
+            // just a demonstration
+            // needs to be done prior LogProjectEvaluationFinished due to IsValid member. This should be swapped in real code
+            s_buildAnalysisManager.ProcessPreEvaluationData(_projectRootElement, false);
 
             _evaluationLoggingContext.LogProjectEvaluationFinished(globalProperties, properties, items, _evaluationProfiler.ProfiledResult);
         }
@@ -1460,6 +1490,8 @@ namespace Microsoft.Build.Evaluation
                 {
                     foreach (ProjectRootElement importedProjectRootElement in importedProjectRootElements)
                     {
+                        s_buildAnalysisManager.ProcessPreEvaluationData(importedProjectRootElement, true);
+
                         _data.RecordImport(importElement, importedProjectRootElement, importedProjectRootElement.Version, sdkResult);
 
                         PerformDepthFirstPass(importedProjectRootElement);
@@ -2451,8 +2483,12 @@ namespace Microsoft.Build.Evaluation
                 return true;
             }
 
+            s_buildAnalysisManager.ProcessEvaluationCondition(element);
+
             using (_evaluationProfiler.TrackCondition(element.ConditionLocation, condition))
             {
+                
+
                 bool result = ConditionEvaluator.EvaluateCondition(
                     condition,
                     parserOptions,

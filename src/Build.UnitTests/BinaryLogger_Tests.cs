@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
-
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Build.Analyzers;
 using Microsoft.Build.BackEnd.Logging;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
@@ -201,6 +203,11 @@ namespace Microsoft.Build.UnitTests
             {
                 string contents = $"""
                     <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Hello">
+                      
+                      <PropertyGroup Condition="$(Test) == true">
+                       <TestProperty>Test</TestProperty>
+                       </PropertyGroup>
+                      
                       <!-- This simple inline task displays "Hello, world!" -->
                       <UsingTask
                         TaskName="HelloWorld"
@@ -225,15 +232,36 @@ namespace Microsoft.Build.UnitTests
                       </UsingTask>
 
                     <Target Name="Hello">
+                      <Message Importance="High" Condition="$(Test2) == true" Text="XYZABC" />
                       <HelloWorld />
                     </Target>
                     </Project>
                     """;
                 TransientTestFolder logFolder = env.CreateFolder(createFolder: true);
-                TransientTestFile projectFile = env.CreateFile(logFolder, "myProj.proj", contents);
+                TransientTestFile projectFile = env.CreateFile(logFolder, "myProjFoo.proj", contents);
+                TransientTestFile config = env.CreateFile(logFolder, "editorconfig.json",
+                    /*lang=json,strict*/
+                    """
+                    {
+                        "ABC123": {
+                            "IsEnabled": true,
+                            "Severity": "Info"
+                        },
+                        "COND0543": {
+                            "IsEnabled": false,
+                            "Severity": "Error",
+                    		"EvaluationAnalysisScope": "AnalyzedProjectOnly",
+                    		"CustomSwitch": "QWERTY"
+                        },
+                        "BLA": {
+                            "IsEnabled": false
+                        }
+                    }
+                    """);
                 
-                env.SetEnvironmentVariable("MSBUILDNOINPROCNODE", "1");
-                RunnerUtilities.ExecMSBuild($"{projectFile.Path} -nr:False -bl:{_logFile} -flp1:logfile={Path.Combine(logFolder.Path, "logFile.log")};verbosity=diagnostic -flp2:logfile={Path.Combine(logFolder.Path, "logFile2.log")};verbosity=normal", out bool success);
+                // env.SetEnvironmentVariable("MSBUILDNOINPROCNODE", "1");
+                string output = RunnerUtilities.ExecMSBuild($"{projectFile.Path} /m:1 -nr:False -bl:{_logFile} -flp1:logfile={Path.Combine(logFolder.Path, "logFile.log")};verbosity=diagnostic -flp2:logfile={Path.Combine(logFolder.Path, "logFile2.log")};verbosity=normal", out bool success);
+                _env.Output.WriteLine(output);
                 success.ShouldBeTrue();
 
                 string assemblyLoadedEventText =

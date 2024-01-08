@@ -127,6 +127,7 @@
     <Compile Include="..\Shared\InterningBinaryReader.cs" />
     <Compile Include="..\Shared\TaskEngineAssemblyResolver.cs" />
     <Compile Include="..\Shared\ThreadPoolExtensions.cs" />
+    <Compile Include="Analyzers\Infra.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="BackEnd\BuildManager\BuildManager.cs" />
     <Compile Include="BackEnd\BuildManager\BuildParameters.cs" />
@@ -682,11 +683,7 @@
   </PropertyGroup>
 
   <!-- Extract binding redirects for Microsoft.Build from MSBuild.exe.config into a source file -->
-  <Target Name="GenerateAppDomainConfig"
-          Inputs="..\MSBuild\app.config;..\MSBuild\app.amd64.config"
-          Outputs="$(NuGetFrameworkWrapperRedirects_FilePath)"
-          BeforeTargets="CoreCompile"
-          Condition="'$(FeatureAppDomain)' == 'true'">
+  <Target Name="GenerateAppDomainConfig" Inputs="..\MSBuild\app.config;..\MSBuild\app.amd64.config" Outputs="$(NuGetFrameworkWrapperRedirects_FilePath)" BeforeTargets="CoreCompile" Condition="'$(FeatureAppDomain)' == 'true'">
     <PropertyGroup>
       <BindingRedirectNamespace>&lt;Namespace Prefix='ns' Uri='urn:schemas-microsoft-com:asm.v1' /&gt;</BindingRedirectNamespace>
       <BindingRedirectXPath>/configuration/runtime/ns:assemblyBinding/ns:dependentAssembly[ns:assemblyIdentity/@name='Microsoft.Build']</BindingRedirectXPath>
