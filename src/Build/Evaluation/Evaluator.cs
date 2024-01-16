@@ -191,15 +191,8 @@ namespace Microsoft.Build.Evaluation
 
         private readonly bool _isRunningInVisualStudio;
 
-        private static readonly BuildAnalysisManager s_buildAnalysisManager = CreateBuildAnalysisManager();
-
-        private static BuildAnalysisManager CreateBuildAnalysisManager()
-        {
-            var buildAnalysisManager = new BuildAnalysisManager();
-            buildAnalysisManager.RegisterAnalyzer(new MySampleSyntaxAnalyzer());
-            buildAnalysisManager.RegisterAnalyzer(new MyConditionAnalyzer());
-            return buildAnalysisManager;
-        }
+        private static readonly BuildAnalysisManager s_buildAnalysisManager =
+            BuildAnalysisManager.CreateBuildAnalysisManager();
 
         /// <summary>
         /// Private constructor called by the static Evaluate method.

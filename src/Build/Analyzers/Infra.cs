@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Configuration.Assemblies;
 using System.Diagnostics;
 using System.IO;
@@ -308,8 +309,22 @@ namespace Microsoft.Build.Analyzers
         public ProjectElement ElementWitCondition { get; }
     }
 
+    public class EvaluatedPropertiesContext : BuildAnalysisContext
+    {
+        internal EvaluatedPropertiesContext(
+            LoggingContext loggingContext,
+            IReadOnlyDictionary<string, string> evaluatedProperties,
+            string projectFilePath) :
+            base(loggingContext) => (EvaluatedProperties, ProjectFilePath) = (evaluatedProperties, projectFilePath);
+
+        public IReadOnlyDictionary<string, string> EvaluatedProperties { get; }
+
+        public string ProjectFilePath { get; }
+    }
+
     public delegate void DocumentAction(DocumentAnalysisContext context);
     public delegate void ConditionAction(ConditionAnalysisContext context);
+    public delegate void EvaluatedPropertiesAction(EvaluatedPropertiesContext context);
 
     internal record AnalyzerDocumentAction(
         DocumentAction DocumentAction,
@@ -321,10 +336,16 @@ namespace Microsoft.Build.Analyzers
         BuildAnalyzer Analyzer,
         BuildAnalyzerConfiguration Configuration);
 
+    internal record AnalyzerEvaluatedPropertiesAction(
+        EvaluatedPropertiesAction EvaluatedPropertiesAction,
+        BuildAnalyzer Analyzer,
+        BuildAnalyzerConfiguration Configuration);
+
     internal class CentralBuildAnalyzerContext
     {
         private readonly List<AnalyzerDocumentAction> _documentActions = new();
         private readonly List<AnalyzerConditionAction> _conditionActions = new();
+        private readonly List<AnalyzerEvaluatedPropertiesAction> _evaluatedPropertiesActions = new();
 
         // todo: other optional arguments to filter in/out what to analyze
         internal void RegisterDocumentAction(AnalyzerDocumentAction documentAction)
@@ -337,6 +358,23 @@ namespace Microsoft.Build.Analyzers
         {
             // tbd
             _conditionActions.Add(conditionAction);
+        }
+
+        internal void RegisterEvaluatedPropertiesAction(AnalyzerEvaluatedPropertiesAction evaluatedPropertiesAction)
+        {
+            // tbd
+            _evaluatedPropertiesActions.Add(evaluatedPropertiesAction);
+        }
+
+        internal void RunEvaluatedPropertiesActions(EvaluatedPropertiesContext evaluatedPropertiesContext)
+        {
+            foreach (var analyzerEvaluatedPropertiesAction in _evaluatedPropertiesActions)
+            {
+                evaluatedPropertiesContext.BuildAnalyzer = analyzerEvaluatedPropertiesAction.Analyzer;
+                evaluatedPropertiesContext.BuildAnalyzerConfiguration = analyzerEvaluatedPropertiesAction.Configuration;
+
+                analyzerEvaluatedPropertiesAction.EvaluatedPropertiesAction(evaluatedPropertiesContext);
+            }
         }
 
         internal void RunDocumentActions(DocumentAnalysisContext documentAnalysisContext)
@@ -419,14 +457,32 @@ namespace Microsoft.Build.Analyzers
         // todo: other optional arguments to filter in/out what to analyze
         public void RegisterDocumentAction(DocumentAction documentAction)
         {
+            if (_configuration.LifeTimeScope >= LifeTimeScope.PerBuild)
+            {
+                throw new InvalidOperationException(
+                    "DocumentAction cannot be registered with LifeTimeScope >= PerBuild");
+            }
+
             // tbd
             _centralContext.RegisterDocumentAction(new AnalyzerDocumentAction(documentAction, _analyzer, _configuration));
         }
 
         public void RegisterConditionAction(ConditionAction conditionAction)
         {
+            if (_configuration.LifeTimeScope >= LifeTimeScope.PerBuild)
+            {
+                throw new InvalidOperationException(
+                    "ConditionAction cannot be registered with LifeTimeScope >= PerBuild");
+            }
+
             // tbd
             _centralContext.RegisterConditionAction(new AnalyzerConditionAction(conditionAction, _analyzer, _configuration));
+        }
+
+        public void RegisterEvaluatedPropertiesAction(EvaluatedPropertiesAction evaluatedPropertiesAction)
+        {
+            _centralContext.RegisterEvaluatedPropertiesAction(
+                new AnalyzerEvaluatedPropertiesAction(evaluatedPropertiesAction, _analyzer, _configuration));
         }
     }
 
@@ -580,6 +636,34 @@ namespace Microsoft.Build.Analyzers
             ConditionAnalysisContext context = new ConditionAnalysisContext(LoggingContext, elementWitCondition);
             _centralContext.RunConditionActions(context);
         }
+
+        internal void ProcessEvaluationFinishedEventArgs(ProjectEvaluationFinishedEventArgs evaluationFinishedEventArgs)
+        {
+            if (LoggingContext == null)
+            {
+                // error out
+                return;
+            }
+
+            Dictionary<string, string> propertiesLookup = new Dictionary<string, string>();
+            Internal.Utilities.EnumerateProperties(evaluationFinishedEventArgs.Properties, propertiesLookup,
+                static (dict, kvp) => dict.Add(kvp.Key, kvp.Value));
+
+            EvaluatedPropertiesContext context = new EvaluatedPropertiesContext(LoggingContext,
+                new ReadOnlyDictionary<string, string>(propertiesLookup),
+                evaluationFinishedEventArgs.ProjectFile!);
+
+            _centralContext.RunEvaluatedPropertiesActions(context);
+        }
+
+        internal static BuildAnalysisManager CreateBuildAnalysisManager()
+        {
+            var buildAnalysisManager = new BuildAnalysisManager();
+            buildAnalysisManager.RegisterAnalyzer(new MySampleSyntaxAnalyzer());
+            buildAnalysisManager.RegisterAnalyzer(new MyConditionAnalyzer());
+            buildAnalysisManager.RegisterAnalyzer(new MyEvalFinishedAnalyzer());
+            return buildAnalysisManager;
+        }
     }
 
     public class MySampleSyntaxAnalyzer : BuildAnalyzer
@@ -647,6 +731,88 @@ namespace Microsoft.Build.Analyzers
                     context.ElementWitCondition.ConditionLocation ?? context.ElementWitCondition.Location,
                     context.ElementWitCondition.Condition));
             }
+        }
+    }
+
+    public class MyEvalFinishedAnalyzer : BuildAnalyzer
+    {
+        public static BuildAnalysisRule SupportedRule = new BuildAnalysisRule("EVL0543", "ConflictingOutputPath",
+            "Two projects should not share their OutputPath nor IntermediateOutputPath locations", "Configuration",
+            "Projects {0} and {1} have conflicting output paths: {2}.",
+            new BuildAnalyzerConfiguration() { Severity = BuildAnalysisResultSeverity.Error, IsEnabled = true });
+
+        public override ImmutableArray<BuildAnalysisRule> SupportedRules { get; } =[SupportedRule];
+
+        public override void Initialize(ConfigurationContext configurationContext)
+        {
+            // TBD
+        }
+
+        public override void RegisterActions(BuildAnalyzerContext context)
+        {
+            context.RegisterEvaluatedPropertiesAction(EvaluatedPropertiesAction);
+        }
+
+        private Dictionary<string, string> _projectsPerOutputPath = new(StringComparer.CurrentCultureIgnoreCase);
+        private HashSet<string> _projects = new(StringComparer.CurrentCultureIgnoreCase);
+
+        private void EvaluatedPropertiesAction(EvaluatedPropertiesContext context)
+        {
+            if (!_projects.Add(context.ProjectFilePath))
+            {
+                return;
+            }
+
+            string? binPath, objPath;
+
+            context.EvaluatedProperties.TryGetValue("OutputPath", out binPath);
+            context.EvaluatedProperties.TryGetValue("IntermediateOutputPath", out objPath);
+
+            //string binPath = context.EvaluatedProperties["OutputPath"];
+            //string objPath = context.EvaluatedProperties["IntermediateOutputPath"];
+
+            string? absoluteBinPath = CheckAndAddFullOutputPath(binPath, context);
+            if (
+                !string.IsNullOrEmpty(objPath) && !string.IsNullOrEmpty(absoluteBinPath) &&
+                !objPath.Equals(binPath, StringComparison.CurrentCultureIgnoreCase)
+                && !objPath.Equals(absoluteBinPath, StringComparison.CurrentCultureIgnoreCase)
+            )
+            {
+                CheckAndAddFullOutputPath(objPath, context);
+            }
+        }
+
+        private string? CheckAndAddFullOutputPath(string? path, EvaluatedPropertiesContext context)
+        {
+            // Debugger.Launch();
+
+            if (string.IsNullOrEmpty(path))
+            {
+                return path;
+            }
+
+            string projectPath = context.ProjectFilePath;
+
+            if (!Path.IsPathRooted(path))
+            {
+                path = Path.Combine(Path.GetDirectoryName(projectPath)!, path);
+            }
+
+            if (_projectsPerOutputPath.TryGetValue(path!, out string? conflictingProject))
+            {
+                context.ReportResult(BuildAnalysisResult.Create(
+                    SupportedRule,
+                    ElementLocation.EmptyLocation,
+                    Path.GetFileName(projectPath),
+                    Path.GetFileName(conflictingProject),
+                    path!));
+            }
+            else
+            {
+                _projectsPerOutputPath[path!] = projectPath;
+            }
+
+            return path;
         }
     }
 

@@ -632,6 +632,7 @@ namespace Microsoft.Build.Execution
                     _buildParameters.WarningsAsErrors,
                     _buildParameters.WarningsNotAsErrors,
                     _buildParameters.WarningsAsMessages);
+                AnalyzersConnectorLogger.LoggingService = loggingService;
 
                 _nodeManager.RegisterPacketHandler(NodePacketType.LogMessage, LogMessagePacket.FactoryForDeserialization, loggingService as INodePacketHandler);
 
@@ -661,6 +662,8 @@ namespace Microsoft.Build.Execution
             // VS builds discard many msbuild events so attach a binlogger to capture them all.
             IEnumerable<ILogger> AppendDebuggingLoggers(IEnumerable<ILogger> loggers)
             {
+                loggers = (loggers ?? Enumerable.Empty<ILogger>()).Concat(new[] { new AnalyzersConnectorLogger() });
+
                 if (DebugUtils.ShouldDebugCurrentProcess is false ||
                     Traits.Instance.DebugEngine is false)
                 {
