@@ -188,7 +188,7 @@ namespace Microsoft.Build.Analyzers
         public string[] MessageArgs { get; }
 
         private string? _message;
-        public string Message => _message ??= $"{BuildAnalysisRule.Id}: {string.Format(BuildAnalysisRule.MessageFormat, MessageArgs)}";
+        public string Message => _message ??= $"{(Equals(Location ?? ElementLocation.EmptyLocation, ElementLocation.EmptyLocation) ? string.Empty : (Location!.LocationString + ": "))}{BuildAnalysisRule.Id}: {string.Format(BuildAnalysisRule.MessageFormat, MessageArgs)}";
     }
 
     public sealed class BuildAnalysisResultWarning : BuildWarningEventArgs
@@ -309,13 +309,62 @@ namespace Microsoft.Build.Analyzers
         public ProjectElement ElementWitCondition { get; }
     }
 
+    // Parsed element context
+    //  inside it, individual elements as subcontexts?
+
+    public enum ItemType
+    {
+        ProjectReference,
+        PackageReference,
+        Compile,
+        EmbeddedResource
+    }
+
+    public static class ItemTypeExtensions
+    {
+        public static IEnumerable<ProjectItemElement> GetItemsOfType(this IEnumerable<ProjectItemElement> items, ItemType itemType)
+            => GetItemsOfType(items, itemType.ToString());
+
+        public static IEnumerable<ProjectItemElement> GetItemsOfType(this IEnumerable<ProjectItemElement> items,
+            string itemType)
+        {
+            return items.Where(i =>
+                i.ItemType.Equals(itemType, StringComparison.CurrentCultureIgnoreCase));
+        }
+    }
+
+    public class ItemsHolder(IEnumerable<ProjectItemElement> items, IEnumerable<ProjectItemGroupElement> itemGroups)
+    {
+        public IEnumerable<ProjectItemElement> Items { get; } = items;
+        public IEnumerable<ProjectItemGroupElement> ItemGroups { get; } = itemGroups;
+
+        public IEnumerable<ProjectItemElement> GetItemsOfType(ItemType itemType)
+            => Items.GetItemsOfType(itemType);
+
+        public IEnumerable<ProjectItemElement> GetItemsOfType(string itemType)
+        {
+            return Items.GetItemsOfType(itemType);
+        }
+    }
+
+    public class ParsedItemsContext : BuildAnalysisContext
+    {
+        internal ParsedItemsContext(
+            LoggingContext loggingContext,
+            ItemsHolder itemsHolder) :
+            base(loggingContext) => ItemsHolder = itemsHolder;
+
+        public ItemsHolder ItemsHolder { get; }
+    }
+
     public class EvaluatedPropertiesContext : BuildAnalysisContext
     {
         internal EvaluatedPropertiesContext(
             LoggingContext loggingContext,
             IReadOnlyDictionary<string, string> evaluatedProperties,
             string projectFilePath) :
-            base(loggingContext) => (EvaluatedProperties, ProjectFilePath) = (evaluatedProperties, projectFilePath);
+            base(loggingContext) => (EvaluatedProperties, ProjectFilePath) =
+            (evaluatedProperties, projectFilePath);
 
         public IReadOnlyDictionary<string, string> EvaluatedProperties { get; }
 
@@ -325,6 +374,7 @@ namespace Microsoft.Build.Analyzers
     public delegate void DocumentAction(DocumentAnalysisContext context);
     public delegate void ConditionAction(ConditionAnalysisContext context);
     public delegate void EvaluatedPropertiesAction(EvaluatedPropertiesContext context);
+    public delegate void ParsedItemsAction(ParsedItemsContext context);
 
     internal record AnalyzerDocumentAction(
         DocumentAction DocumentAction,
@@ -341,11 +391,20 @@ namespace Microsoft.Build.Analyzers
         BuildAnalyzer Analyzer,
         BuildAnalyzerConfiguration Configuration);
 
+    internal record AnalyzerParsedItemsAction(
+        ParsedItemsAction ParsedItemsAction,
+        BuildAnalyzer Analyzer,
+        BuildAnalyzerConfiguration Configuration);
+
     internal class CentralBuildAnalyzerContext
     {
         private readonly List<AnalyzerDocumentAction> _documentActions = new();
         private readonly List<AnalyzerConditionAction> _conditionActions = new();
         private readonly List<AnalyzerEvaluatedPropertiesAction> _evaluatedPropertiesActions = new();
+        private readonly List<AnalyzerParsedItemsAction> _parsedItemsActions = new();
+
+        internal bool HasConditionActions => _conditionActions.Count > 0;
+        internal bool HasParsedItemsActions => _parsedItemsActions.Count > 0;
 
         // todo: other optional arguments to filter in/out what to analyze
         internal void RegisterDocumentAction(AnalyzerDocumentAction documentAction)
@@ -364,6 +423,12 @@ namespace Microsoft.Build.Analyzers
         {
             // tbd
             _evaluatedPropertiesActions.Add(evaluatedPropertiesAction);
+        }
+
+        internal void RegisterParsedItemsAction(AnalyzerParsedItemsAction parsedItemsAction)
+        {
+            // tbd
+            _parsedItemsActions.Add(parsedItemsAction);
         }
 
         internal void RunEvaluatedPropertiesActions(EvaluatedPropertiesContext evaluatedPropertiesContext)
@@ -416,6 +481,16 @@ namespace Microsoft.Build.Analyzers
                 {
                     conditionAction.ConditionAction(conditionAnalysisContext);
                 }
+            }
+        }
+
+        internal void RunParsedItemsActions(ParsedItemsContext parsedItemsContext)
+        {
+            foreach (var parsedItemsAction in _parsedItemsActions)
+            {
+                parsedItemsContext.BuildAnalyzer = parsedItemsAction.Analyzer;
+                parsedItemsContext.BuildAnalyzerConfiguration = parsedItemsAction.Configuration;
+                parsedItemsAction.ParsedItemsAction(parsedItemsContext);
             }
         }
 
@@ -483,6 +558,12 @@ namespace Microsoft.Build.Analyzers
         {
             _centralContext.RegisterEvaluatedPropertiesAction(
                 new AnalyzerEvaluatedPropertiesAction(evaluatedPropertiesAction, _analyzer, _configuration));
+        }
+
+        public void RegisterParsedItemsAction(ParsedItemsAction parsedItemsAction)
+        {
+            _centralContext.RegisterParsedItemsAction(
+                new AnalyzerParsedItemsAction(parsedItemsAction, _analyzer, _configuration));
         }
     }
 
@@ -627,7 +708,7 @@ namespace Microsoft.Build.Analyzers
 
         internal void ProcessEvaluationCondition(ProjectElement elementWitCondition)
         {
-            if (LoggingContext == null)
+            if (LoggingContext == null || !_centralContext.HasConditionActions)
             {
                 // error out
                 return;
@@ -636,6 +717,11 @@ namespace Microsoft.Build.Analyzers
             ConditionAnalysisContext context = new ConditionAnalysisContext(LoggingContext, elementWitCondition);
             _centralContext.RunConditionActions(context);
         }
+
+        private SimpleProjectRootElementCache _cache = new SimpleProjectRootElementCache();
+
+        //private static readonly bool s_createProjectRootElement = Environment.GetEnvironmentVariable("RECREATEPROJECTS")?
+        //    .Equals("1", StringComparison.OrdinalIgnoreCase) ?? false;
 
         internal void ProcessEvaluationFinishedEventArgs(ProjectEvaluationFinishedEventArgs evaluationFinishedEventArgs)
         {
@@ -654,6 +740,17 @@ namespace Microsoft.Build.Analyzers
                 evaluationFinishedEventArgs.ProjectFile!);
 
             _centralContext.RunEvaluatedPropertiesActions(context);
+
+            if (_centralContext.HasParsedItemsActions)
+            {
+                ProjectRootElement xml = ProjectRootElement.OpenProjectOrSolution(evaluationFinishedEventArgs.ProjectFile!, /*unused*/
+                    null, /*unused*/null, _cache, false /*Not explicitly loaded - unused*/);
+
+                ParsedItemsContext parsedItemsContext = new ParsedItemsContext(LoggingContext,
+                    new ItemsHolder(xml.Items, xml.ItemGroups));
+
+                _centralContext.RunParsedItemsActions(parsedItemsContext);
+            }
         }
 
         internal static BuildAnalysisManager CreateBuildAnalysisManager()
@@ -662,6 +759,7 @@ namespace Microsoft.Build.Analyzers
             buildAnalysisManager.RegisterAnalyzer(new MySampleSyntaxAnalyzer());
             buildAnalysisManager.RegisterAnalyzer(new MyConditionAnalyzer());
             buildAnalysisManager.RegisterAnalyzer(new MyEvalFinishedAnalyzer());
+            buildAnalysisManager.RegisterAnalyzer(new PackageReferencePivotLimitationsAnalyzer());
             return buildAnalysisManager;
         }
     }
@@ -813,6 +911,62 @@ namespace Microsoft.Build.Analyzers
             }
 
             return path;
+        }
+    }
+
+    public class PackageReferencePivotLimitationsAnalyzer : BuildAnalyzer
+    {
+        public override void Initialize(ConfigurationContext configurationContext)
+        {
+            // TBD
+        }
+
+        // TODO: should be an enumeration/list of rules
+        public static BuildAnalysisRule SupportedRule = new BuildAnalysisRule("PKGREF111", "WrongPackageReferenceCondition",
+            "PackageReferences should only pivot on TargetFramework", "Syntax",
+            "Following condition might lead to unexpected behavior for PackageReference:" + Environment.NewLine + "{0}",
+            new BuildAnalyzerConfiguration() { Severity = BuildAnalysisResultSeverity.Warning, IsEnabled = true });
+
+        public override ImmutableArray<BuildAnalysisRule> SupportedRules { get; } =[SupportedRule];
+
+        public override void RegisterActions(BuildAnalyzerContext context)
+        {
+            context.RegisterParsedItemsAction(ParsedItemsHandler);
+        }
+
+        private void ParsedItemsHandler(ParsedItemsContext context)
+        {
+            foreach (ProjectItemElement projectItemElement in context.ItemsHolder.GetItemsOfType(ItemType.PackageReference))
+            {
+                if (!string.IsNullOrEmpty(projectItemElement.Condition) &&
+                    IsInvalidConditionForPackageReference(projectItemElement.Condition))
+                {
+                    context.ReportResult(BuildAnalysisResult.Create(
+                        SupportedRule,
+                        projectItemElement.ConditionLocation ?? ElementLocation.EmptyLocation,
+                        projectItemElement.Condition));
+                }
+            }
+
+            foreach (ProjectItemGroupElement projectItemGroupElement in context.ItemsHolder.ItemGroups)
+            {
+                if (
+                    !string.IsNullOrEmpty(projectItemGroupElement.Condition) &&
+                    projectItemGroupElement.GetChildrenOfType<ProjectItemElement>()
+                        .GetItemsOfType(ItemType.PackageReference).Any() &&
+                    IsInvalidConditionForPackageReference(projectItemGroupElement.Condition))
+                {
+                    context.ReportResult(BuildAnalysisResult.Create(
+                        SupportedRule,
+                        projectItemGroupElement.ConditionLocation ?? ElementLocation.EmptyLocation,
+                        projectItemGroupElement.Condition));
+                }
+            }
+        }
+
+        private static bool IsInvalidConditionForPackageReference(string condition)
+        {
+            return condition.IndexOf("TargetFramework", StringComparison.OrdinalIgnoreCase) == -1;
         }
     }
 

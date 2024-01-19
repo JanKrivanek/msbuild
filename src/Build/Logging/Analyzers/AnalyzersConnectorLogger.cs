@@ -44,11 +44,14 @@ namespace Microsoft.Build.Experimental
             eventSource.AnyEventRaised += EventSource_AnyEventRaised;
         }
 
+        private Stopwatch sw = new Stopwatch();
+
         private void EventSource_AnyEventRaised(object sender, BuildEventArgs e)
         {
             // Debugger.Launch();
 
-            if (e is ProjectEvaluationFinishedEventArgs projectEvaluationFinishedEventArgs)
+            if (e is ProjectEvaluationFinishedEventArgs projectEvaluationFinishedEventArgs &&
+                !(projectEvaluationFinishedEventArgs.ProjectFile?.EndsWith(".metaproj") ?? false))
             {
                 // Debugger.Launch();
 
@@ -56,11 +59,26 @@ namespace Microsoft.Build.Experimental
                 s_buildAnalysisManager.LoggingContext =
                     new AnalyzerLoggingContext(LoggingService!, e.BuildEventContext!);
 
-                s_buildAnalysisManager.ProcessEvaluationFinishedEventArgs(projectEvaluationFinishedEventArgs);
+                try
+                {
+                    sw.Start();
+                    s_buildAnalysisManager.ProcessEvaluationFinishedEventArgs(projectEvaluationFinishedEventArgs);
+                    sw.Stop();
+                }
+                catch (Exception exception)
+                {
+                    Debugger.Launch();
+                    Console.WriteLine(exception);
+                    throw;
+                }
             }
         }
 
         public void Shutdown()
-        { }
+        {
+            // Console.WriteLine("=========================================");
+            // Console.WriteLine("Processing of eval args took: " + sw.Elapsed);
+            // Console.WriteLine("=========================================");
+        }
     }
 }

@@ -13,6 +13,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Build.Analyzers;
 using FluentAssertions;
 using Microsoft.Build.BackEnd.Logging;
+using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
@@ -386,6 +387,10 @@ namespace Microsoft.Build.UnitTests
                       <PropertyGroup Condition="$(Test) == true">
                        <TestProperty>Test</TestProperty>
                        </PropertyGroup>
+                       
+                       <ItemGroup>
+                    <PackageReference Include="System.Text.Json" Version="1.2.3" Condition="$(Test) == false" />
+                    </ItemGroup>
                       
                       <!-- This simple inline task displays "Hello, world!" -->
                       <UsingTask
@@ -418,6 +423,11 @@ namespace Microsoft.Build.UnitTests
                     """;
                 TransientTestFolder logFolder = env.CreateFolder(createFolder: true);
                 TransientTestFile projectFile = env.CreateFile(logFolder, "myProjFoo.proj", contents);
+
+                // var cache = new SimpleProjectRootElementCache();
+                // ProjectRootElement xml = ProjectRootElement.OpenProjectOrSolution(projectFile.Path, /*unused*/null, /*unused*/null, cache, false /*Not explicitly loaded - unused*/);
+
+
                 TransientTestFile config = env.CreateFile(logFolder, "editorconfig.json",
                     /*lang=json,strict*/
                     """
