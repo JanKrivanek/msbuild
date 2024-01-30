@@ -2518,6 +2518,8 @@ namespace Microsoft.Build.Evaluation
                 return EvaluateCondition(element, condition, expanderOptions, parserOptions);
             }
 
+            s_buildAnalysisManager.ProcessEvaluationCondition(element);
+
             using (_evaluationProfiler.TrackCondition(element.ConditionLocation, condition))
             {
                 bool result = ConditionEvaluator.EvaluateConditionCollectingConditionedProperties(

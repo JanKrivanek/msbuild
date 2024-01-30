@@ -475,6 +475,121 @@ namespace Microsoft.Build.UnitTests
         }
 
         [Fact]
+        public void SampleProjectBuild()
+        {
+            using (TestEnvironment env = TestEnvironment.Create())
+            {
+                string contents = $"""
+                    <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Hello">
+                    
+                      <PropertyGroup>
+                        <OutputType>Exe</OutputType>
+                        <TargetFramework>net8.0</TargetFramework>
+                        <ImplicitUsings>enable</ImplicitUsings>
+                        <Nullable>enable</Nullable>
+                        
+                        <TargetPath>bin/foo.dll</TargetPath>
+                      </PropertyGroup>
+                      
+                      <PropertyGroup Condition="$(Test) == true">
+                     <TestProperty>Test</TestProperty>
+                     </PropertyGroup>
+                     
+                     <ItemGroup>
+                      <ProjectReference Include=".\FooBar-Copy.csproj" />
+                      </ItemGroup>
+                      
+                      <ItemGroup>
+                      <PackageReference Include="System.Text.Json" Version="1.2.3" Condition="$(Test) == false" />
+                      </ItemGroup>
+                      
+                      <Target Name="Hello">
+                      <Message Importance="High" Condition="$(Test2) == true" Text="XYZABC" />
+                    </Target>
+                    
+                    </Project>
+                    """;
+
+                string contents2 = $"""
+                                   <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Hello">
+                                   
+                                     <PropertyGroup>
+                                       <OutputType>Exe</OutputType>
+                                       <TargetFramework>net8.0</TargetFramework>
+                                       <ImplicitUsings>enable</ImplicitUsings>
+                                       <Nullable>enable</Nullable>
+                                     </PropertyGroup>
+                                     
+                                     <PropertyGroup Condition="$(Test) == true">
+                                    <TestProperty>Test</TestProperty>
+                                    </PropertyGroup>
+                                    
+                                    <ItemGroup>
+                                   <Reference Include="bin/foo.dll" />
+                                   </ItemGroup>
+                                    
+                                    <Target Name="Hello">
+                                     <Message Importance="High" Condition="$(Test2) == true" Text="XYZABC" />
+                                   </Target>
+                                   
+                                   </Project>
+                                   """;
+                TransientTestFolder logFolder = env.CreateFolder(createFolder: true);
+                TransientTestFile projectFile = env.CreateFile(logFolder, "FooBar.csproj", contents);
+                TransientTestFile projectFile2 = env.CreateFile(logFolder, "FooBar-Copy.csproj", contents);
+
+                // var cache = new SimpleProjectRootElementCache();
+                // ProjectRootElement xml = ProjectRootElement.OpenProjectOrSolution(projectFile.Path, /*unused*/null, /*unused*/null, cache, false /*Not explicitly loaded - unused*/);
+
+
+                TransientTestFile config = env.CreateFile(logFolder, "editorconfig.json",
+                    /*lang=json,strict*/
+                    """
+                    {
+                        "ABC123": {
+                            "IsEnabled": true,
+                            "Severity": "Info"
+                        },
+                        "COND0543": {
+                            "IsEnabled": false,
+                            "Severity": "Error",
+                    		"EvaluationAnalysisScope": "AnalyzedProjectOnly",
+                    		"CustomSwitch": "QWERTY"
+                        },
+                        "BLA": {
+                            "IsEnabled": false
+                        }
+                    }
+                    """);
+
+                // env.SetEnvironmentVariable("MSBUILDNOINPROCNODE", "1");
+                string output = RunnerUtilities.ExecMSBuild($"{projectFile.Path} /m:1 -nr:False", out bool success);
+                _env.Output.WriteLine(output);
+                success.ShouldBeTrue();
+
+                // just to workaround assertion shared by all tests in this class
+                File.WriteAllText(_logFile, string.Empty);
+            }
+        }
+
+        [Fact]
+        public void TestReplayBinlog()
+        {
+            string binlogPath = @"C:\temp\del2\newlog.binlog"; // @"C:\temp\del3\msbuild02.binlog";
+
+            BinaryLogReplayEventSource logReader = new BinaryLogReplayEventSource();
+            logReader.AnyEventRaised += (s, e) =>
+            {
+                if (e is ProjectEvaluationFinishedEventArgs projectEvaluationFinishedEventArgs)
+                {
+                    var prop = projectEvaluationFinishedEventArgs.Properties;
+                    var it = projectEvaluationFinishedEventArgs.Items;
+                }
+            };
+            logReader.Replay(binlogPath);
+        }
+
+        [Fact]
         public void BinaryLoggerShouldEmbedFilesViaTaskOutput()
         {
             using var buildManager = new BuildManager();

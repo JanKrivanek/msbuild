@@ -125,6 +125,20 @@ namespace Microsoft.Build.Construction
             return true;
         }
 
+        private const char Separator = '|';
+
+        internal string ToSerializedString()
+            => $"{Column}{Separator}{Line}{Separator}{File}";
+
+        internal static ElementLocation FromSerializedString(string serializedString)
+        {
+            string[] parts = serializedString.Split(new[] {Separator}, 3);
+            int column = int.Parse(parts[0]);
+            int line = int.Parse(parts[1]);
+            string file = parts[2];
+            return ElementLocation.Create(file, line, column);
+        }
+
         /// <summary>
         /// Location of element.
         /// </summary>

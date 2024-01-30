@@ -13,21 +13,22 @@ using Microsoft.Build.Framework;
 
 namespace Microsoft.Build.Experimental
 {
+    internal class AnalyzerLoggingContext : LoggingContext
+    {
+        public AnalyzerLoggingContext(ILoggingService loggingService, BuildEventContext eventContext) : base(
+            loggingService, eventContext)
+        {
+            IsValid = true;
+        }
+
+        public AnalyzerLoggingContext(LoggingContext baseContext) : base(baseContext)
+        {
+            IsValid = true;
+        }
+    }
+
     internal class AnalyzersConnectorLogger : ILogger
     {
-        private class AnalyzerLoggingContext : LoggingContext
-        {
-            public AnalyzerLoggingContext(ILoggingService loggingService, BuildEventContext eventContext) : base(
-                loggingService, eventContext)
-            {
-                IsValid = true;
-            }
-
-            public AnalyzerLoggingContext(LoggingContext baseContext) : base(baseContext)
-            {
-                IsValid = true;
-            }
-        }
 
         private static readonly BuildAnalysisManager s_buildAnalysisManager = BuildAnalysisManager.CreateBuildAnalysisManager();
 
@@ -71,6 +72,14 @@ namespace Microsoft.Build.Experimental
                     Console.WriteLine(exception);
                     throw;
                 }
+            }
+            // todo: filter, or probably different type of event
+            else if (e is ExtendedCustomBuildEventArgs extendedCustomBuildEvent)
+            {
+                s_buildAnalysisManager.LoggingContext =
+                    new AnalyzerLoggingContext(LoggingService!, e.BuildEventContext!);
+                s_buildAnalysisManager.ProcessRemoteResult(
+                    BuildAnalysisIntermediateResult.FromBuildEventArgs(extendedCustomBuildEvent));
             }
         }
 

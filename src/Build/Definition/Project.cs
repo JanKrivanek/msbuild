@@ -13,6 +13,7 @@ using System.Text;
 using System.Xml;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.BackEnd.Logging;
+using Microsoft.Build.BackEnd.SdkResolution;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Definition;
@@ -449,6 +450,65 @@ namespace Microsoft.Build.Evaluation
         public Project(string projectFile, IDictionary<string, string> globalProperties, string toolsVersion, string subToolsetVersion, ProjectCollection projectCollection, ProjectLoadSettings loadSettings)
             : this(projectFile, globalProperties, toolsVersion, subToolsetVersion, projectCollection, loadSettings, evaluationContext: null, directoryCacheFactory: null, interactive: false)
         {
+        }
+
+        internal static Project CreateForAnalyzedBuildEvaluation(
+            AnalysisEvaluationOverrides overrides,
+            string projectFile,
+            IDictionary<string, string> globalProperties,
+            string toolsVersion,
+            ProjectLoadSettings loadSettings,
+            string subToolsetVersion = null,
+            ProjectCollection projectCollection = null,
+            EvaluationContext evaluationContext = null,
+            IDirectoryCacheFactory directoryCacheFactory = null,
+            bool interactive = false)
+        {
+            return new Project(
+                overrides,
+                projectFile,
+                globalProperties,
+                toolsVersion,
+                subToolsetVersion,
+                projectCollection ?? ProjectCollection.GlobalProjectCollection,
+                loadSettings,
+                evaluationContext,
+                directoryCacheFactory,
+                interactive);
+        }
+
+        private Project(AnalysisEvaluationOverrides overrides, string projectFile, IDictionary<string, string> globalProperties, string toolsVersion, string subToolsetVersion, ProjectCollection projectCollection, ProjectLoadSettings loadSettings,
+            EvaluationContext evaluationContext, IDirectoryCacheFactory directoryCacheFactory, bool interactive)
+        {
+            ErrorUtilities.VerifyThrowArgumentNull(projectFile, nameof(projectFile));
+            ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(toolsVersion, nameof(toolsVersion));
+            ErrorUtilities.VerifyThrowArgumentNull(projectCollection, nameof(projectCollection));
+
+            ProjectCollection = projectCollection;
+            var defaultImplementation = new ProjectImpl(this, projectFile, globalProperties, toolsVersion, subToolsetVersion, loadSettings, evaluationContext);
+            defaultImplementation.EvaluationOverrides = overrides;
+            implementationInternal = (IProjectLinkInternal)defaultImplementation;
+            implementation = defaultImplementation;
+
+            _directoryCacheFactory = directoryCacheFactory;
+
+            // Note: not sure why only this ctor flavor do TryUnloadProject
+            // seems the XmlReader based one should also clean the same way.
+            try
+            {
+                defaultImplementation.Initialize(globalProperties, toolsVersion, subToolsetVersion, loadSettings, evaluationContext, interactive);
+            }
+            catch (Exception ex) when (!ExceptionHandling.IsCriticalException(ex))
+            {
+                // If possible, clear out the XML we just loaded into the XML cache:
+                // if we had loaded the XML from disk into the cache within this constructor,
+                // and then are are bailing out because there is a typo in the XML such that
+                // evaluation failed, we don't want to leave the bad XML in the cache;
+                // the user wouldn't be able to fix the XML file and try again.
+                projectCollection.TryUnloadProject(Xml);
+
+                throw;
+            }
         }
 
         private Project(string projectFile, IDictionary<string, string> globalProperties, string toolsVersion, string subToolsetVersion, ProjectCollection projectCollection, ProjectLoadSettings loadSettings,
@@ -1807,6 +1867,15 @@ namespace Microsoft.Build.Evaluation
         {
             ErrorUtilities.VerifyThrowInternalNull(otherXml, nameof(otherXml));
             ErrorUtilities.VerifyThrowInvalidOperation(ReferenceEquals(Xml, otherXml), "OM_CannotModifyEvaluatedObjectInImportedFile", otherXml.Location.File);
+        }
+
+        internal class AnalysisEvaluationOverrides
+        {
+            public BuildParameters BuildParameters { get; set; }
+            public int SubmissionId { get; set; }
+            public ISdkResolverService SdkResolverService { get; set; }
+            public BuildEventContext BuildEventContext { get; set; }
+            public ILoggingService LoggingService { get; set; }
         }
 
         /// <summary>
@@ -3708,11 +3777,18 @@ namespace Microsoft.Build.Evaluation
                 return new ProjectInstance(_data, DirectoryPath, FullPath, ProjectCollection.HostServices, ProjectCollection.EnvironmentProperties, settings);
             }
 
+            internal AnalysisEvaluationOverrides EvaluationOverrides { get; set; }
+
             private void Reevaluate(
                 ILoggingService loggingServiceForEvaluation,
                 ProjectLoadSettings loadSettings,
                 EvaluationContext evaluationContext = null)
             {
+                ////this.GetItems("").First().UnevaluatedInclude;
+                ////this.GetItems("").First().Metadata.First().UnevaluatedValue;
+                ////this.GetItems("").First().Metadata.First().IsImported
+                ////this.dir
+
                 evaluationContext = evaluationContext?.ContextForNewProject() ?? EvaluationContext.Create(EvaluationContext.SharingPolicy.Isolated);
 
                 Evaluator<ProjectProperty, ProjectItem, ProjectMetadata, ProjectItemDefinition>.Evaluate(
@@ -3720,18 +3796,18 @@ namespace Microsoft.Build.Evaluation
                     Owner,
                     Xml,
                     loadSettings,
-                    ProjectCollection.MaxNodeCount,
-                    ProjectCollection.EnvironmentProperties,
-                    loggingServiceForEvaluation,
+                    EvaluationOverrides?.BuildParameters.MaxNodeCount ?? ProjectCollection.MaxNodeCount,
+                    EvaluationOverrides == null ? ProjectCollection.EnvironmentProperties : EvaluationOverrides.BuildParameters.EnvironmentPropertiesInternal,
+                    EvaluationOverrides?.LoggingService ?? loggingServiceForEvaluation,
                     new ProjectItemFactory(Owner),
-                    ProjectCollection,
+                    EvaluationOverrides?.BuildParameters.ToolsetProvider ?? ProjectCollection,
                     Owner._directoryCacheFactory,
-                    ProjectCollection.ProjectRootElementCache,
-                    s_buildEventContext,
-                    evaluationContext.SdkResolverService,
-                    BuildEventContext.InvalidSubmissionId,
+                    EvaluationOverrides?.BuildParameters.ProjectRootElementCache ?? ProjectCollection.ProjectRootElementCache,
+                    EvaluationOverrides?.BuildEventContext ?? s_buildEventContext,
+                    EvaluationOverrides?.SdkResolverService ?? evaluationContext.SdkResolverService,
+                    EvaluationOverrides?.SubmissionId ?? BuildEventContext.InvalidSubmissionId,
                     evaluationContext,
-                    _interactive);
+                    EvaluationOverrides?.BuildParameters.Interactive ?? _interactive);
 
                 ErrorUtilities.VerifyThrow(LastEvaluationId != BuildEventContext.InvalidEvaluationId, "Evaluation should produce an evaluation ID");
 

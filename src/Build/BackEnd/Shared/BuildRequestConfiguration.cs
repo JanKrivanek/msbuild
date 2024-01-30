@@ -7,10 +7,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Microsoft.Build.Analyzers;
 using Microsoft.Build.BackEnd.SdkResolution;
 using Microsoft.Build.Collections;
+using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
+using Microsoft.Build.Experimental;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Globbing;
 using Microsoft.Build.Shared;
@@ -424,6 +427,9 @@ namespace Microsoft.Build.BackEnd
             }
         }
 
+        private static readonly BuildAnalysisManager s_buildAnalysisManager =
+            BuildAnalysisManager.CreateBuildAnalysisManager();
+
         /// <summary>
         /// Loads the project specified by the configuration's parameters into the configuration block.
         /// </summary>
@@ -475,25 +481,61 @@ namespace Microsoft.Build.BackEnd
                 {
                     projectLoadSettings |= ProjectLoadSettings.FailOnUnresolvedSdk;
                 }
-                return new ProjectInstance(
-                    ProjectFullPath,
-                    globalProperties,
-                    toolsVersionOverride,
-                    componentHost.BuildParameters,
-                    componentHost.LoggingService,
-                    new BuildEventContext(
-                        submissionId,
-                        nodeId,
-                        BuildEventContext.InvalidEvaluationId,
-                        BuildEventContext.InvalidProjectInstanceId,
-                        BuildEventContext.InvalidProjectContextId,
-                        BuildEventContext.InvalidTargetId,
-                        BuildEventContext.InvalidTaskId),
-                    sdkResolverService,
+
+                BuildEventContext buildEventContext = new BuildEventContext(
                     submissionId,
-                    projectLoadSettings);
+                    nodeId,
+                    BuildEventContext.InvalidEvaluationId,
+                    BuildEventContext.InvalidProjectInstanceId,
+                    BuildEventContext.InvalidProjectContextId,
+                    BuildEventContext.InvalidTargetId,
+                    BuildEventContext.InvalidTaskId);
+
+                ProjectInstance projectInstance;
+
+                if (IsProjectAnalysisRequested)
+                {
+                    Project.AnalysisEvaluationOverrides overrides = new Project.AnalysisEvaluationOverrides()
+                    {
+                        BuildEventContext = buildEventContext,
+                        BuildParameters = componentHost.BuildParameters,
+                        SdkResolverService = sdkResolverService,
+                        SubmissionId = submissionId,
+                        LoggingService = componentHost.LoggingService,
+                    };
+
+                    Project p = Evaluation.Project.CreateForAnalyzedBuildEvaluation(
+                        overrides,
+                        ProjectFullPath,
+                        globalProperties,
+                        toolsVersionOverride,
+                        projectLoadSettings);
+
+                    s_buildAnalysisManager.LoggingContext = new AnalyzerLoggingContext(componentHost.LoggingService, buildEventContext);
+                    s_buildAnalysisManager.ProcessEvaluatedProject(p);
+
+                    projectInstance = p.CreateProjectInstance();
+                }
+                else
+                {
+
+                    projectInstance = new ProjectInstance(
+                        ProjectFullPath,
+                        globalProperties,
+                        toolsVersionOverride,
+                        componentHost.BuildParameters,
+                        componentHost.LoggingService,
+                        buildEventContext,
+                        sdkResolverService,
+                        submissionId,
+                        projectLoadSettings);
+                }
+
+                return projectInstance;
             });
         }
+
+        private bool IsProjectAnalysisRequested { get; set; } = true;
 
         private void InitializeProject(BuildParameters buildParameters, Func<ProjectInstance> loadProjectFromFile)
         {

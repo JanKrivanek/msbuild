@@ -2977,6 +2977,10 @@ namespace Microsoft.Build.Execution
                 evaluationContext,
                 interactive: buildParameters.Interactive);
 
+            // Debugger.Launch();
+
+            // here project instance
+
             ErrorUtilities.VerifyThrow(EvaluationId != BuildEventContext.InvalidEvaluationId, "Evaluation should produce an evaluation ID");
         }
 

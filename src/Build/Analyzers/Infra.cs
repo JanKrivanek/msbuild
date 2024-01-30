@@ -9,7 +9,6 @@ using System.Configuration.Assemblies;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,8 +18,6 @@ using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
-using Microsoft.Build.Framework.Telemetry;
-using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.Analyzers
 {
@@ -159,6 +156,40 @@ namespace Microsoft.Build.Analyzers
         public BuildAnalyzerConfiguration DefaultConfiguration { get; }
     }
 
+    public class BuildAnalysisIntermediateResult(string type)
+    {
+        public static BuildAnalysisIntermediateResult Create(BuildAnalysisRule rule, string data)
+        {
+            return new BuildAnalysisIntermediateResult(rule.Id)
+            {
+                Data = data,
+            };
+        }
+
+        public static BuildAnalysisIntermediateResult Create(BuildAnalysisRule rule, Dictionary<string, string?> data)
+        {
+            return new BuildAnalysisIntermediateResult(rule.Id)
+            {
+                DetailedData = data,
+            };
+        }
+
+        public static BuildAnalysisIntermediateResult FromBuildEventArgs(ExtendedCustomBuildEventArgs eventArgs)
+        {
+            return new BuildAnalysisIntermediateResult(eventArgs.ExtendedType)
+            {
+                Data = eventArgs.ExtendedData, DetailedData = eventArgs.ExtendedMetadata,
+            };
+        }
+
+        internal string Type { get; private init; } = type;
+        public string? Data { get; private init; }
+        public Dictionary<string, string?>? DetailedData { get; private init; }
+
+        internal BuildEventArgs ToEventArgs()
+            => new ExtendedCustomBuildEventArgs(Type) { ExtendedData = Data, ExtendedMetadata = DetailedData };
+    }
+
     // might need to be dedicated type - to be flexible between error, warning, info
     public class BuildAnalysisResult
     {
@@ -274,7 +305,7 @@ namespace Microsoft.Build.Analyzers
 
     public class BuildAnalysisContext
     {
-        private readonly LoggingContext _loggingContext;
+        private protected readonly LoggingContext _loggingContext;
 
         internal BuildAnalysisContext(LoggingContext loggingContext) => _loggingContext = loggingContext;
 
@@ -289,6 +320,35 @@ namespace Microsoft.Build.Analyzers
             eventArgs.BuildEventContext = _loggingContext.BuildEventContext;
             _loggingContext.LogBuildEvent(eventArgs);
         }
+    }
+
+    public class RemoteNodeAnalysisContext : BuildAnalysisContext
+    {
+        internal RemoteNodeAnalysisContext(LoggingContext loggingContext) :
+            base(loggingContext){ }
+
+        public void ReportIntermediateResult(BuildAnalysisIntermediateResult intermediateResult)
+        {
+            BuildEventArgs eventArgs = intermediateResult.ToEventArgs();
+            eventArgs.BuildEventContext = _loggingContext.BuildEventContext;
+            _loggingContext.LogBuildEvent(eventArgs);
+        }
+    }
+
+    public class EvaluatedProjectAnalysisContext : RemoteNodeAnalysisContext
+    {
+        internal EvaluatedProjectAnalysisContext(LoggingContext loggingContext, Project evaluatedProject) :
+            base(loggingContext) => EvaluatedProject = evaluatedProject;
+
+        public Project EvaluatedProject { get; }
+    }
+
+    public class DistributedAnalysisContext : BuildAnalysisContext
+    {
+        internal DistributedAnalysisContext(LoggingContext loggingContext, BuildAnalysisIntermediateResult remoteIntermediateResult) :
+            base(loggingContext) => RemoteIntermediateResult = remoteIntermediateResult;
+
+        public BuildAnalysisIntermediateResult RemoteIntermediateResult { get; }
     }
 
     public class DocumentAnalysisContext : BuildAnalysisContext
@@ -375,6 +435,8 @@ namespace Microsoft.Build.Analyzers
     public delegate void ConditionAction(ConditionAnalysisContext context);
     public delegate void EvaluatedPropertiesAction(EvaluatedPropertiesContext context);
     public delegate void ParsedItemsAction(ParsedItemsContext context);
+    public delegate void EvaluatedProjectAction(EvaluatedProjectAnalysisContext context);
+    public delegate void RemoteResultAction(DistributedAnalysisContext context);
 
     internal record AnalyzerDocumentAction(
         DocumentAction DocumentAction,
@@ -396,12 +458,24 @@ namespace Microsoft.Build.Analyzers
         BuildAnalyzer Analyzer,
         BuildAnalyzerConfiguration Configuration);
 
+    internal record AnalyzerEvaluatedProjectAction(
+        EvaluatedProjectAction EvaluatedProjectAction,
+        BuildAnalyzer Analyzer,
+        BuildAnalyzerConfiguration Configuration);
+
+    internal record AnalyzerRemoteResultAction(
+        RemoteResultAction RemoteResultAction,
+        BuildAnalyzer Analyzer,
+        BuildAnalyzerConfiguration Configuration);
+
     internal class CentralBuildAnalyzerContext
     {
         private readonly List<AnalyzerDocumentAction> _documentActions = new();
         private readonly List<AnalyzerConditionAction> _conditionActions = new();
         private readonly List<AnalyzerEvaluatedPropertiesAction> _evaluatedPropertiesActions = new();
         private readonly List<AnalyzerParsedItemsAction> _parsedItemsActions = new();
+        private readonly List<AnalyzerEvaluatedProjectAction> _evaluatedProjectActions = new();
+        private readonly List<AnalyzerRemoteResultAction> _remoteResultActions = new();
 
         internal bool HasConditionActions => _conditionActions.Count > 0;
         internal bool HasParsedItemsActions => _parsedItemsActions.Count > 0;
@@ -429,6 +503,18 @@ namespace Microsoft.Build.Analyzers
         {
             // tbd
             _parsedItemsActions.Add(parsedItemsAction);
+        }
+
+        internal void RegisterEvaluatedProjectAction(AnalyzerEvaluatedProjectAction evaluatedProjectAction)
+        {
+            // tbd
+            _evaluatedProjectActions.Add(evaluatedProjectAction);
+        }
+
+        internal void RegisterRemoteResultAction(AnalyzerRemoteResultAction remoteResultAction)
+        {
+            // tbd
+            _remoteResultActions.Add(remoteResultAction);
         }
 
         internal void RunEvaluatedPropertiesActions(EvaluatedPropertiesContext evaluatedPropertiesContext)
@@ -491,6 +577,28 @@ namespace Microsoft.Build.Analyzers
                 parsedItemsContext.BuildAnalyzer = parsedItemsAction.Analyzer;
                 parsedItemsContext.BuildAnalyzerConfiguration = parsedItemsAction.Configuration;
                 parsedItemsAction.ParsedItemsAction(parsedItemsContext);
+            }
+        }
+
+        internal void RunEvaluatedProjectActions(EvaluatedProjectAnalysisContext evaluatedProjectAnalysisContext)
+        {
+            foreach (var evaluatedProjectAction in _evaluatedProjectActions)
+            {
+                evaluatedProjectAnalysisContext.BuildAnalyzer = evaluatedProjectAction.Analyzer;
+                evaluatedProjectAnalysisContext.BuildAnalyzerConfiguration = evaluatedProjectAction.Configuration;
+                evaluatedProjectAction.EvaluatedProjectAction(evaluatedProjectAnalysisContext);
+            }
+        }
+
+        internal void RunRemoteResultActions(DistributedAnalysisContext distributedAnalysisContext)
+        {
+            foreach (var remoteResultAction in _remoteResultActions.Where(reg =>
+                         reg.Analyzer.SupportedRules.Any(r =>
+                             r.Id.Equals(distributedAnalysisContext.RemoteIntermediateResult.Type))))
+            {
+                distributedAnalysisContext.BuildAnalyzer = remoteResultAction.Analyzer;
+                distributedAnalysisContext.BuildAnalyzerConfiguration = remoteResultAction.Configuration;
+                remoteResultAction.RemoteResultAction(distributedAnalysisContext);
             }
         }
 
@@ -564,6 +672,18 @@ namespace Microsoft.Build.Analyzers
         {
             _centralContext.RegisterParsedItemsAction(
                 new AnalyzerParsedItemsAction(parsedItemsAction, _analyzer, _configuration));
+        }
+
+        public void RegisterEvaluatedProjectAction(EvaluatedProjectAction evaluatedProjectAction)
+        {
+            _centralContext.RegisterEvaluatedProjectAction(
+                new AnalyzerEvaluatedProjectAction(evaluatedProjectAction, _analyzer, _configuration));
+        }
+
+        public void RegisterRemoteResultAction(RemoteResultAction remoteResultAction)
+        {
+            _centralContext.RegisterRemoteResultAction(
+                new AnalyzerRemoteResultAction(remoteResultAction, _analyzer, _configuration));
         }
     }
 
@@ -723,6 +843,7 @@ namespace Microsoft.Build.Analyzers
         //private static readonly bool s_createProjectRootElement = Environment.GetEnvironmentVariable("RECREATEPROJECTS")?
         //    .Equals("1", StringComparison.OrdinalIgnoreCase) ?? false;
 
+        // This requires MSBUILDLOGPROPERTIESANDITEMSAFTEREVALUATION set to 1
         internal void ProcessEvaluationFinishedEventArgs(ProjectEvaluationFinishedEventArgs evaluationFinishedEventArgs)
         {
             if (LoggingContext == null)
@@ -753,6 +874,30 @@ namespace Microsoft.Build.Analyzers
             }
         }
 
+        internal void ProcessEvaluatedProject(Project evaluatedProject)
+        {
+            if (LoggingContext == null)
+            {
+                // error out
+                return;
+            }
+
+            EvaluatedProjectAnalysisContext context = new EvaluatedProjectAnalysisContext(LoggingContext, evaluatedProject);
+            _centralContext.RunEvaluatedProjectActions(context);
+        }
+
+        internal void ProcessRemoteResult(BuildAnalysisIntermediateResult remoteIntermediateResult)
+        {
+            if (LoggingContext == null)
+            {
+                // error out
+                return;
+            }
+
+            DistributedAnalysisContext context = new DistributedAnalysisContext(LoggingContext, remoteIntermediateResult);
+            _centralContext.RunRemoteResultActions(context);
+        }
+
         internal static BuildAnalysisManager CreateBuildAnalysisManager()
         {
             var buildAnalysisManager = new BuildAnalysisManager();
@@ -760,6 +905,7 @@ namespace Microsoft.Build.Analyzers
             buildAnalysisManager.RegisterAnalyzer(new MyConditionAnalyzer());
             buildAnalysisManager.RegisterAnalyzer(new MyEvalFinishedAnalyzer());
             buildAnalysisManager.RegisterAnalyzer(new PackageReferencePivotLimitationsAnalyzer());
+            buildAnalysisManager.RegisterAnalyzer(new ReferencingProjectOutputAnalyzer());
             return buildAnalysisManager;
         }
     }
@@ -969,6 +1115,125 @@ namespace Microsoft.Build.Analyzers
             return condition.IndexOf("TargetFramework", StringComparison.OrdinalIgnoreCase) == -1;
         }
     }
+
+    //public class DistributedEvaluationAnalyzer : BuildAnalyzer
+    //{
+    //    public override void Initialize(ConfigurationContext configurationContext)
+    //    {
+    //        // TBD
+    //    }
+
+    //    // TODO: should be an enumeration/list of rules
+    //    public static BuildAnalysisRule SupportedRule = new BuildAnalysisRule("DISTRIBEVAL9999", "UndefinedPropertyInIncludeItem",
+    //        "Item Include path starts with undefined property leading to possible enumeration of root", "Paths",
+    //        "Item '{0}' Include path '{1}' starts with undefined property leading to possible enumeration of root.",
+    //        new BuildAnalyzerConfiguration() { Severity = BuildAnalysisResultSeverity.Warning, IsEnabled = true });
+
+    //    public override ImmutableArray<BuildAnalysisRule> SupportedRules { get; } =[SupportedRule];
+
+    //    public override void RegisterActions(BuildAnalyzerContext context)
+    //    {
+    //        context.RegisterEvaluatedProjectAction(EvaluatedProjectAction);
+    //    }
+
+    //    private void EvaluatedProjectAction(EvaluatedProjectAnalysisContext context)
+    //    {
+
+            
+    //    }
+    //}
+
+
+    public class ReferencingProjectOutputAnalyzer : BuildAnalyzer
+    {
+        public override void Initialize(ConfigurationContext configurationContext)
+        {
+            // TBD
+        }
+
+        // TODO: should be an enumeration/list of rules
+        public static BuildAnalysisRule SupportedRule = new BuildAnalysisRule("REFBIN9999", "ReferencingOtherProjectOutput",
+            "Project should not reference other project output", "References",
+            "'{0}' referenced via 'Reference', but it is produced by '{1}' - the project should be referenced directly via 'ProjectReference' instead.",
+            new BuildAnalyzerConfiguration() { Severity = BuildAnalysisResultSeverity.Warning, IsEnabled = true });
+
+        public override ImmutableArray<BuildAnalysisRule> SupportedRules { get; } =[SupportedRule];
+
+        public override void RegisterActions(BuildAnalyzerContext context)
+        {
+            context.RegisterEvaluatedProjectAction(EvaluatedProjectAction);
+            context.RegisterRemoteResultAction(RemoteResultAction);
+            context.RegisterEvaluatedPropertiesAction(EvaluatedPropertiesAction);
+        }
+
+        private void EvaluatedPropertiesAction(EvaluatedPropertiesContext context)
+        {
+            if (context.EvaluatedProperties.TryGetValue("TargetPath", out string? binPath))
+            {
+                if (!Path.IsPathRooted(binPath))
+                {
+                    binPath = Path.Combine(Path.GetDirectoryName(context.ProjectFilePath)!, binPath);
+                }
+
+                _projectsPerOutput[binPath] = context.ProjectFilePath;
+
+                ConsolidateData(context);
+            }
+        }
+
+        private Dictionary<string, string> _referencesWithLocations = new Dictionary<string, string>();
+        private Dictionary<string, string> _projectsPerOutput = new Dictionary<string, string>();
+
+        private void RemoteResultAction(DistributedAnalysisContext context)
+        {
+            foreach (var pair in context.RemoteIntermediateResult.DetailedData!)
+            {
+                _referencesWithLocations[pair.Key] = pair.Value!;
+            }
+
+            ConsolidateData(context);
+        }
+
+        private void ConsolidateData(BuildAnalysisContext context)
+        {
+            foreach (var pair in _referencesWithLocations)
+            {
+                if (_projectsPerOutput.TryGetValue(pair.Key, out string? projectFilePath))
+                {
+                    context.ReportResult(BuildAnalysisResult.Create(
+                        SupportedRule,
+                        ElementLocation.FromSerializedString(pair.Value),
+                        pair.Key, projectFilePath));
+                }
+            }
+        }
+
+        private void EvaluatedProjectAction(EvaluatedProjectAnalysisContext context)
+        {
+            var referencesDict = context.EvaluatedProject.GetItems("Reference").Where(i => !i.IsImported)
+                .ToDictionary(ToFullPath, i => (string?)i.Xml.Location.ToSerializedString());
+
+            if (referencesDict.Any())
+            {
+                BuildAnalysisIntermediateResult intermediateResult =
+                    BuildAnalysisIntermediateResult.Create(SupportedRule, referencesDict);
+
+                context.ReportIntermediateResult(intermediateResult);
+            }
+
+            string ToFullPath(ProjectItem item)
+            {
+                string path = item.EvaluatedInclude;
+                if (!Path.IsPathRooted(path))
+                {
+                    path = Path.Combine(Path.GetDirectoryName(item.Project.FullPath)!, path);
+                }
+
+                return path;
+            }
+        }
+    }
+
 
 #pragma warning restore SA1005 // Single line comments should begin with single space
 }
