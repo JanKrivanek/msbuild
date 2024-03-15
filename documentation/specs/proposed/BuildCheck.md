@@ -52,7 +52,7 @@ Users are able to tune the behavior of the checks via `.editorconfig` which brin
 
 Powerusers are able to develop, test and publish their custom analyzers easily and contribute them back to community. The local development scenario doesn’t require roundtrip through packaging.
 
-Solid set of in-the-box analyzers is provided by the dotnet team, extended each release, with high quality reports (pointing exact locations of issue, offering clear and actionable explanations, not repetitive for builds with multi-execution or/and multi-importing of a same script in single build context).
+Solid set of in-the-box analyzers is provided by the dotnet team, extended each release, with high quality reports (pointing exact locations of issue, offering clear and actionable explanations, not repetitive for builds with multi-execution or/and multi-importing of a same script in single build context). The existing in-the-box analyzers are gradually enabled by default and their severity increased - in waves (likely tied to sdk releases) - aiming to constantly increase quality of our customers build scripts. Full Framework (and hence Visual Studio) builds will take more conservative approach with requiring an explicit opt-in into the analyzers - in order to not introduce upgrade blockers. 
 
 The analysis has small impact on build duration with ability to opt-out from analysis altogether which will remove all the performance costs associated with the analysis.
 
@@ -88,7 +88,7 @@ Majority of following cases are included in appropriate context within the scena
 
 
 **Out of scope**
-* Custom analyzers has equal data access as the inbox analyzers.
+* Custom analyzers have equal data access as the inbox analyzers.
 * All inbox analyzers reports have precise location(s) of issues.
 * Opt-out of analysis on code-level (analogy to C# pragmas, but within msbuild xml files).
 * Simplified authoring experience via dedicated reference assembly.
