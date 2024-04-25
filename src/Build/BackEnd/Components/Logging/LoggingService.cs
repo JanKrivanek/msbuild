@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -988,6 +989,8 @@ namespace Microsoft.Build.BackEnd.Logging
                 // should do that now
                 if (_centralForwardingLoggerSinkId == -1)
                 {
+                    // Debugger.Launch();
+
                     // Create a forwarding logger which forwards all events to an eventSourceSink
                     Assembly engineAssembly = typeof(LoggingService).GetTypeInfo().Assembly;
                     string loggerClassName = "Microsoft.Build.BackEnd.Logging.CentralForwardingLogger";
@@ -1753,6 +1756,8 @@ namespace Microsoft.Build.BackEnd.Logging
         {
             var innerLogger = (logger is ProjectCollection.ReusableLogger reusableLogger) ? reusableLogger.OriginalLogger : logger;
 
+            // Debugger.Launch();
+
             MessageImportance? minimumImportance = innerLogger switch
             {
                 Build.Logging.ConsoleLogger consoleLogger => consoleLogger.GetMinimumMessageImportance(),
@@ -1764,6 +1769,9 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 // The null logger has no effect on minimum verbosity.
                 Execution.BuildManager.NullLogger => null,
+
+                // The BuildCheck connector logger consumes only high priority messages.
+                BuildCheck.Infrastructure.BuildCheckConnectorLogger => MessageImportance.High,
 
                 // The terminal logger consumes only high priority messages.
                 _ => innerLogger.GetType().FullName == "Microsoft.Build.Logging.TerminalLogger.TerminalLogger"

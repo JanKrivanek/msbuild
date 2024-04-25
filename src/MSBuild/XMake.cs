@@ -1300,6 +1300,8 @@ namespace Microsoft.Build.CommandLine
             ProjectCollection projectCollection = null;
             bool onlyLogCriticalEvents = false;
 
+            Debugger.Launch();
+
             try
             {
                 List<ForwardingLoggerRecord> remoteLoggerRecords = new List<ForwardingLoggerRecord>();

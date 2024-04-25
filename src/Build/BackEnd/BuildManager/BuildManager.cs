@@ -2985,6 +2985,8 @@ namespace Microsoft.Build.Execution
 
             if (_buildParameters.IsBuildCheckEnabled)
             {
+                // Debugger.Launch();
+
                 var buildCheckManagerProvider =
                     ((IBuildComponentHost)this).GetComponent(BuildComponentType.BuildCheckManagerProvider) as IBuildCheckManagerProvider;
                 buildCheckManagerProvider!.Instance.SetDataSource(BuildCheckDataSource.EventArgs);
@@ -2999,6 +3001,8 @@ namespace Microsoft.Build.Execution
             {
                 if (loggers != null)
                 {
+                    Debugger.Launch();
+
                     foreach (ILogger logger in loggers)
                     {
                         loggingService.RegisterLogger(logger);

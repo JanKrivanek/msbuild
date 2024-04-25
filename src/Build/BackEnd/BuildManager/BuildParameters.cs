@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Threading;
@@ -504,6 +505,8 @@ namespace Microsoft.Build.Execution
                         ErrorUtilities.VerifyThrowArgumentNull(logger, "Loggers", "NullLoggerNotAllowed");
                     }
                 }
+
+                // Debugger.Launch();
 
                 _loggers = value;
             }
