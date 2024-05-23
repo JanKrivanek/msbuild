@@ -1,9 +1,142 @@
-<mxfile host="app.diagrams.net" modified="2024-05-23T12:27:31.289Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" etag="xCallI5A4Dcel5zsxB1_" version="24.4.4" type="github">
+<mxfile host="app.diagrams.net" modified="2024-05-23T14:32:37.017Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" etag="mZf6R8mRCgnTQiNhNWVA" version="24.4.4" type="github">
   <diagram name="Page-1" id="KYUkMzLAdZubMLOFAHTG">
-    <mxGraphModel dx="2074" dy="1098" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2035" dy="1727" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="ZHasga2VB2cQo_qIorBn-40" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-1" target="ZHasga2VB2cQo_qIorBn-34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-1" value="EntryPoint Node&lt;br&gt;&lt;br&gt;Scheduler&lt;br&gt;&lt;br&gt;In Proc Node" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="670" y="240" width="100" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-2" value="MSBuild&lt;br&gt;* Programming language (xml based, .props, .targets)&lt;div&gt;* Build engine (interpreting the MSBuild language)&lt;/div&gt;&lt;div&gt;* Library of common build logic (copying data etc.)&lt;br&gt;* API over the Build engine&lt;/div&gt;&lt;div&gt;* CLI (tool wrapping the API)&lt;/div&gt;&lt;div&gt;* API for manipulation of the MSBuild scripts&lt;br&gt;&lt;/div&gt;&lt;div&gt;* VS -&amp;gt; intercats via the API (the interactive API, Evaluation API and Build API)&lt;br&gt;* Extnesibility&lt;br&gt;&amp;nbsp; &amp;nbsp;* Loggers (built-ins - refer by name, custom - dll)&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* Tasks (built-in - in Build.Tasks; Factories - inline code, binary; Exec task)&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* SDK Resolvers;&amp;nbsp; We discover resolvers from folder next to install location of MSBuild - so MSBuild should be suggested to be installed to restricted location&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* SDKs - specified within the ptoject element (SDK=&quot;...&quot;) - resolvers are then asked to resolve the sdk based on string; There is as well SDK top level element for same element; It can be specified as part of the import element&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* BuildResult Cache - Injected via special property within a project that points to the binary that implements the cache&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-210" y="40" width="460" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-3" value="The Language&lt;div&gt;Tailored for building, publishing&lt;/div&gt;&lt;div&gt;It&#39;s data driven - much easier to express data (properties, items), than logic&lt;br&gt;&amp;nbsp; &amp;nbsp;(majority of projects actually defines just the data, not the logic)&lt;/div&gt;&lt;div&gt;&#39;Scripts&#39; can be imported&amp;nbsp; - data and logic (data usually in .props, logic usually in .targets - not enforced)&lt;/div&gt;&lt;div&gt;Common build logic is imported as so called &#39;common targets&#39;&lt;/div&gt;&lt;div&gt;Targets (executing unit) - you either manipulate data, or/and execute build tools (tasks)&lt;/div&gt;&lt;div&gt;Tasks - ToolTask ...; Any .Net logic extending the given contract&lt;/div&gt;&lt;div&gt;It has concepts helping achieving builds incrementality (targets and tasks inputs/outputs; skipping based on conditions ....)&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-210" y="390" width="500" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-4" target="ZHasga2VB2cQo_qIorBn-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-4" value=".rsp" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="460" y="350" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-5" value="API" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="520" y="240" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-6" target="ZHasga2VB2cQo_qIorBn-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-6" value="CLI" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="520" y="290" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-7" target="ZHasga2VB2cQo_qIorBn-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-7" value="VS" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="410" y="240" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=-0.041;entryY=0.327;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-5" target="ZHasga2VB2cQo_qIorBn-1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-14" target="ZHasga2VB2cQo_qIorBn-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-14" value="User defined import logic&lt;br&gt;&lt;br&gt;(.props/.targets)" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="640" y="370" width="90" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-15" value=".proj&lt;br&gt;(e.g. Foo.csproj)" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="540" y="380" width="80" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-17" value="Groups of operations:&lt;br&gt;* Evaluation&lt;div&gt;&amp;nbsp; &amp;nbsp;* Defines the data (props, items)&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* executes all imports (inserts in place content of the imported files)&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* Only R/O in-memory operation (no side effects on disk)&amp;nbsp;&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp;* if SDK is involved - we call resolvers - so they can write to disk. E.g Nuget resolver can restore and write packages to disk&lt;br&gt;&amp;nbsp; &amp;nbsp;&lt;br&gt;&lt;br&gt;* Execution of the build (it requires Evaluation to proceed)&lt;/div&gt;&lt;div&gt;&amp;nbsp; * Runs Targets/tasks&lt;/div&gt;&lt;div&gt;&amp;nbsp; * It&#39;s allowed and desired to alter the evaluated model&lt;/div&gt;&lt;div&gt;&amp;nbsp; * It can generate intermediary data/outputs. Both modifications (evaluated model - the MSBuild data in memory; and the physical I/O intermediry data) often happens together; but can happen in isolation as well&lt;/div&gt;&lt;div&gt;&amp;nbsp; * Example - Compiler - it can either discover files itself; or (roslyn) it requires everything on input&lt;/div&gt;&lt;div&gt;&amp;nbsp; * Knowing exhaustively all the inputs and outputs is allowing to implement incrementality logic&lt;/div&gt;" style="shape=callout;whiteSpace=wrap;html=1;perimeter=calloutPerimeter;align=left;position2=0.5;" vertex="1" parent="1">
+          <mxGeometry x="470" y="-90" width="520" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.94;entryY=0.986;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-15" target="ZHasga2VB2cQo_qIorBn-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-21" value="This can be minimalistic (debugging), but usually contains lot of logic&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: initial;&quot;&gt;Possible logic that can happen:&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: initial;&quot;&gt;* Evaluation of env properties&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;* Globs expansions (scanning/importing from locations; can be wildcarded)&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;* Explicit import of files with logic&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;* Property/Item functions execution - we have whitelist of things to be used - to prevent side effects. There can be prop functions that can influence reproducivility (e.g. TickCount)&lt;/div&gt;" style="shape=callout;whiteSpace=wrap;html=1;perimeter=calloutPerimeter;position2=0.45;rotation=-180;" vertex="1" parent="1">
+          <mxGeometry x="390" y="480" width="320" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.955;entryY=1.021;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-23" target="ZHasga2VB2cQo_qIorBn-15">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="685" y="490" />
+              <mxPoint x="685" y="482" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-23" value="&amp;lt;..&amp;gt;.g.props from obj folder (IntermediaryOutputPath)&lt;br&gt;&lt;br&gt;Can be injected from nugets during restore" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="750" y="370" width="140" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-24" value="&quot;Installed&quot; logic&lt;br&gt;(&quot;Common targets&quot;)&lt;br&gt;SDK + VS" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="740" y="530" width="120" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-25" target="ZHasga2VB2cQo_qIorBn-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-25" value="User specific imports" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="310" y="385" width="120" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-26" value="ENV&lt;br&gt;Registry" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" vertex="1" parent="1">
+          <mxGeometry x="350" y="280" width="60" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-30" value="MSBuild doesn&#39;t read registry, but there are PropFunctions that can" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="260" y="210" width="130" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.62;entryY=0.999;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-24" target="ZHasga2VB2cQo_qIorBn-15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-33" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-32" target="ZHasga2VB2cQo_qIorBn-5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="325" y="220" />
+              <mxPoint x="550" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-32" value="Extensibility&lt;br&gt;Loggers(dlls)&lt;br&gt;Tasks(dlls or code)&lt;div&gt;Resolvers (fixed location)&lt;br&gt;SDKs&lt;br&gt;Cache&lt;br&gt;Checks&lt;/div&gt;" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document" vertex="1" parent="1">
+          <mxGeometry x="255" y="40" width="140" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-34" value="Worker Node" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="970" y="250" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-35" value="Worker Node" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="980" y="260" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-42" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-36" target="ZHasga2VB2cQo_qIorBn-37">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-36" value="Worker Node" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="990" y="270" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-37" value="Task Host" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="260" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-39" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZHasga2VB2cQo_qIorBn-38" target="ZHasga2VB2cQo_qIorBn-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-38" value="Nuget Client" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="75" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-41" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="850" y="250" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-43" value="Single Project Build - no parallelism. Everything sequentially (Evaluation then exec - target by target; task by task)&lt;br&gt;&lt;br&gt;Executing Task - There needs to be &amp;lt;UsingTask&amp;gt; elelemtn - to know the dll and class to load. The MSBuild XML can define additional attributes for xml. Logic will map those from xml to the properties in the implementation; make sure to initialize data and then call Execute method&lt;br&gt;&lt;br&gt;UsingTask can define other requirements - e.g. runtime/bitness constraints - those are satisfied with TaskHost process&lt;br&gt;&lt;br&gt;TaskHost execution can be explicitly opted in - to sandbox execution; and to prevent locking of files by long living nodes (and when something need to be build and loaded during the same build)&lt;br&gt;&lt;br&gt;&lt;br&gt;Multi Proj" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="540" width="460" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-44" value="IPC (...)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="320" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-45" value="MSBuild Server" style="whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="60" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-47" value="Diagnosibility - logs, etw, telemetry" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="420" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZHasga2VB2cQo_qIorBn-48" value="NEXT:&lt;br&gt;Diagnosibility&lt;br&gt;IPC&lt;br&gt;Paralelism&lt;br&gt;VS scenarios specific&lt;br&gt;Restore&lt;br&gt;MsBuild Server" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="800" y="810" width="200" height="160" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
