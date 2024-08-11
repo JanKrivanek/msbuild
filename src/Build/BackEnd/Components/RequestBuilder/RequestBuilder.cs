@@ -1123,7 +1123,7 @@ namespace Microsoft.Build.BackEnd
                 {
                     buildCheckManager.StartProjectEvaluation(
                         BuildCheckDataSource.BuildExecution,
-                        new AnalysisLoggingContext(_nodeLoggingContext.LoggingService, _requestEntry.Request.ParentBuildEventContext),
+                        new CheckLoggingContext(_nodeLoggingContext.LoggingService, _requestEntry.Request.BuildEventContext),
                         _requestEntry.RequestConfiguration.ProjectFullPath);
 
                     _requestEntry.RequestConfiguration.LoadProjectIntoConfiguration(
@@ -1148,13 +1148,14 @@ namespace Microsoft.Build.BackEnd
             {
                 buildCheckManager.EndProjectEvaluation(
                     BuildCheckDataSource.BuildExecution,
-                    _requestEntry.Request.ParentBuildEventContext);
+                    _requestEntry.Request.BuildEventContext);
             }
 
             _projectLoggingContext = _nodeLoggingContext.LogProjectStarted(_requestEntry);
             buildCheckManager.StartProjectRequest(
                 BuildCheckDataSource.BuildExecution,
-                _requestEntry.Request.ParentBuildEventContext);
+                _requestEntry.Request.BuildEventContext,
+                _requestEntry.RequestConfiguration.ProjectFullPath);
 
             try
             {
@@ -1225,7 +1226,8 @@ namespace Microsoft.Build.BackEnd
             {
                 buildCheckManager.EndProjectRequest(
                     BuildCheckDataSource.BuildExecution,
-                    _requestEntry.Request.ParentBuildEventContext);
+                    new CheckLoggingContext(_nodeLoggingContext.LoggingService, _requestEntry.Request.BuildEventContext),
+                    _requestEntry.RequestConfiguration.ProjectFullPath);
             }
 
             BuildResult CopyTargetResultsFromProxyTargetsToRealTargets(BuildResult resultFromTargetBuilder)
@@ -1402,10 +1404,7 @@ namespace Microsoft.Build.BackEnd
             ProjectInstance project = _requestEntry?.RequestConfiguration?.Project;
             if (project != null)
             {
-                // example: C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2
-                FileClassifier.Shared.RegisterImmutableDirectory(project.GetPropertyValue("FrameworkPathOverride")?.Trim());
-                // example: C:\Program Files\dotnet\
-                FileClassifier.Shared.RegisterImmutableDirectory(project.GetPropertyValue("NetCoreRoot")?.Trim());
+                FileClassifier.Shared.RegisterKnownImmutableLocations(project.GetPropertyValue);
             }
         }
 
