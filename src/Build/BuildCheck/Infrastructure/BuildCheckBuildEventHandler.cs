@@ -10,6 +10,7 @@ using Microsoft.Build.Experimental.BuildCheck;
 using Microsoft.Build.Experimental.BuildCheck.Acquisition;
 using Microsoft.Build.Experimental.BuildCheck.Utilities;
 using Microsoft.Build.Framework;
+using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.Experimental.BuildCheck.Infrastructure;
 
@@ -18,7 +19,9 @@ internal class BuildCheckBuildEventHandler
     private readonly IBuildCheckManager _buildCheckManager;
     private readonly ICheckContextFactory _checkContextFactory;
 
-    private readonly Dictionary<Type, Action<BuildEventArgs>> _eventHandlers;
+    private Dictionary<Type, Action<BuildEventArgs>> _eventHandlers;
+    private readonly Dictionary<Type, Action<BuildEventArgs>> _eventHandlersFull;
+    private readonly Dictionary<Type, Action<BuildEventArgs>> _eventHandlersRestore;
 
     internal BuildCheckBuildEventHandler(
         ICheckContextFactory checkContextFactory,
@@ -27,12 +30,13 @@ internal class BuildCheckBuildEventHandler
         _buildCheckManager = buildCheckManager;
         _checkContextFactory = checkContextFactory;
 
-        _eventHandlers = new()
+        _eventHandlersFull = new()
         {
+            { typeof(BuildSubmissionStartedEventArgs), (BuildEventArgs e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
             { typeof(ProjectEvaluationFinishedEventArgs), (BuildEventArgs e) => HandleProjectEvaluationFinishedEvent((ProjectEvaluationFinishedEventArgs)e) },
             { typeof(ProjectEvaluationStartedEventArgs), (BuildEventArgs e) => HandleProjectEvaluationStartedEvent((ProjectEvaluationStartedEventArgs)e) },
             { typeof(EnvironmentVariableReadEventArgs), (BuildEventArgs e) => HandleEnvironmentVariableReadEvent((EnvironmentVariableReadEventArgs)e) },
-            { typeof(ProjectStartedEventArgs), (BuildEventArgs e) => _buildCheckManager.StartProjectRequest(BuildCheckDataSource.EventArgs, e.BuildEventContext!, ((ProjectStartedEventArgs)e).ProjectFile!) },
+            { typeof(ProjectStartedEventArgs), (BuildEventArgs e) => _buildCheckManager.StartProjectRequest(e.BuildEventContext!, ((ProjectStartedEventArgs)e).ProjectFile!) },
             { typeof(ProjectFinishedEventArgs), (BuildEventArgs e) => HandleProjectFinishedRequest((ProjectFinishedEventArgs)e) },
             { typeof(BuildCheckTracingEventArgs), (BuildEventArgs e) => HandleBuildCheckTracingEvent((BuildCheckTracingEventArgs)e) },
             { typeof(BuildCheckAcquisitionEventArgs), (BuildEventArgs e) => HandleBuildCheckAcquisitionEvent((BuildCheckAcquisitionEventArgs)e) },
@@ -41,6 +45,14 @@ internal class BuildCheckBuildEventHandler
             { typeof(TaskParameterEventArgs), (BuildEventArgs e) => HandleTaskParameterEvent((TaskParameterEventArgs)e) },
             { typeof(BuildFinishedEventArgs), (BuildEventArgs e) => HandleBuildFinishedEvent((BuildFinishedEventArgs)e) },
         };
+
+        // During restore we'll wait only for restore to be done.
+        _eventHandlersRestore = new()
+        {
+            { typeof(BuildSubmissionStartedEventArgs), (BuildEventArgs e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
+        };
+
+        _eventHandlers = _eventHandlersFull;
     }
 
     public void HandleBuildEvent(BuildEventArgs e)
@@ -51,6 +63,14 @@ internal class BuildCheckBuildEventHandler
         }
     }
 
+    private void HandleBuildSubmissionStartedEvent(BuildSubmissionStartedEventArgs eventArgs)
+    {
+        eventArgs.GlobalProperties.TryGetValue(MSBuildConstants.MSBuildIsRestoring, out string? restoreProperty);
+        bool isRestoring = restoreProperty is not null && Convert.ToBoolean(restoreProperty);
+
+        _eventHandlers = isRestoring ? _eventHandlersRestore : _eventHandlersFull;
+    }
+
     private void HandleProjectEvaluationFinishedEvent(ProjectEvaluationFinishedEventArgs eventArgs)
     {
         if (!IsMetaProjFile(eventArgs.ProjectFile))
@@ -59,7 +79,7 @@ internal class BuildCheckBuildEventHandler
                 _checkContextFactory.CreateCheckContext(eventArgs.BuildEventContext!),
                 eventArgs);
 
-            _buildCheckManager.EndProjectEvaluation(BuildCheckDataSource.EventArgs, eventArgs.BuildEventContext!);
+            _buildCheckManager.EndProjectEvaluation(eventArgs.BuildEventContext!);
         }
     }
 
@@ -67,16 +87,19 @@ internal class BuildCheckBuildEventHandler
     {
         if (!IsMetaProjFile(eventArgs.ProjectFile))
         {
-            _buildCheckManager.StartProjectEvaluation(
+            var checkContext = _checkContextFactory.CreateCheckContext(eventArgs.BuildEventContext!);
+            _buildCheckManager.ProjectFirstEncountered(
                 BuildCheckDataSource.EventArgs,
-                _checkContextFactory.CreateCheckContext(eventArgs.BuildEventContext!),
+                checkContext,
+                eventArgs.ProjectFile!);
+            _buildCheckManager.ProcessProjectEvaluationStarted(
+                checkContext,
                 eventArgs.ProjectFile!);
         }
     }
 
     private void HandleProjectFinishedRequest(ProjectFinishedEventArgs eventArgs)
         => _buildCheckManager.EndProjectRequest(
-                BuildCheckDataSource.EventArgs,
                 _checkContextFactory.CreateCheckContext(eventArgs.BuildEventContext!),
                 eventArgs!.ProjectFile!);
 

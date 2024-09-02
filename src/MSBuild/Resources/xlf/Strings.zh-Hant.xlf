@@ -1805,6 +1805,26 @@
       {1}: duration in seconds with 1 decimal point
     </note>
       </trans-unit>
+      <trans-unit id="SAC">
+        <source>Based on the Windows registry key VerifiedAndReputablePolicyState, SAC state = {0}.</source>
+        <target state="translated">根據 Windows 登錄機碼 VerifiedAndReputablePolicyState，SAC 狀態 = {0}。</target>
+        <note>"Windows" is the OS, SAC is the Smart App Control, "VerifiedAndReputablePolicyState" should not be localized</note>
+      </trans-unit>
+      <trans-unit id="SAC_Enforcement">
+        <source>1: in enforcement</source>
+        <target state="translated">1: 強制</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="SAC_Evaluation">
+        <source>2: in evaluation. It is recommended to turn off Smart App Control in development environemnt as otherwise performance might be impacted</source>
+        <target state="translated">2: 評估中。建議關閉開發環境中的智慧型手機應用程式控制件，否則效能可能會受到影響</target>
+        <note>Smart App Control, "VerifiedAndReputablePolicyState" should not be localized</note>
+      </trans-unit>
+      <trans-unit id="SAC_Off">
+        <source>0: turned off</source>
+        <target state="translated">0: 關閉</target>
+        <note />
+      </trans-unit>
       <trans-unit id="SchemaFileLocation">
         <source>Validating project using schema file "{0}".</source>
         <target state="translated">正在使用結構描述檔 "{0}" 驗證專案。</target>
