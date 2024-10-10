@@ -9,12 +9,16 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.Exceptions;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Framework.BuildException;
 using Shouldly;
 using Xunit;
+using CallTarget = Microsoft.Build.Tasks.CallTarget;
 
 #nullable disable
 
@@ -253,6 +257,192 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 .SelectMany(s => s.GetTypes())
                 .Where(BuildExceptionSerializationHelper.IsSupportedExceptionType)
                 .Select(t => new object[] { t });
+
+        // Helper method to format the key strings
+        private static string XmlDocumentationKeyHelper(
+            string typeFullNameString,
+            string memberNameString)
+        {
+            string key = Regex.Replace(
+                typeFullNameString, @"\[.*\]",
+                string.Empty).Replace('+', '.');
+            if (memberNameString != null)
+            {
+                key += "." + memberNameString;
+            }
+            return key;
+        }
+
+        internal static Dictionary<string, string> loadedXmlDocumentation =
+            new Dictionary<string, string>();
+        public static void LoadXmlDocumentation(string xmlDocumentation)
+        {
+            using (XmlReader xmlReader = XmlReader.Create(xmlDocumentation))
+            {
+                while (xmlReader.Read())
+                {
+                    if (xmlReader.NodeType == XmlNodeType.Element && xmlReader.Name == "member")
+                    {
+                        string raw_name = xmlReader["name"];
+                        loadedXmlDocumentation[raw_name] = xmlReader.ReadInnerXml();
+                    }
+                }
+            }
+        }
+
+        public static string GetDocumentation(Type type)
+        {
+            string key = "T:" + XmlDocumentationKeyHelper(type.FullName, null);
+            loadedXmlDocumentation.TryGetValue(key, out string documentation);
+            return documentation;
+        }
+
+        public static string MdEncode(string text)
+        {
+            return text.Replace(Environment.NewLine, "<br>").Replace(" ", "&nbsp;");
+        }
+
+        public static string RemoveExtraWhite(string text)
+        {
+            return string.Join(" ", text.Split((string[])null, StringSplitOptions.RemoveEmptyEntries)).Trim();
+        }
+
+        private static string tst = """
+                                    <summary>
+                                    Formats a version by combining version and revision.
+                                    </summary>
+                                    <comment>
+                                     Case #1: Input: Version=&lt;undefined&gt;  Revision=&lt;don't care&gt;   Output: OutputVersion="1.0.0.0"
+                                     Case #2: Input: Version="1.0.0.*"    Revision="5"            Output: OutputVersion="1.0.0.5"
+                                     Case #3: Input: Version="1.0.0.0"    Revision=&lt;don't care&gt;   Output: OutputVersion="1.0.0.0"
+                                    </comment>
+                                    """;
+
+        public static string CommentToTxt(string txt)
+        {
+            try
+            {
+                XElement xl = XElement.Parse(txt);
+                return RemoveExtraWhite(xl.Value);
+            }
+            catch (Exception)
+            { }
+
+            txt = $"<a>{txt}</a>";
+
+            XElement xl2 = XElement.Parse(txt);
+
+            if (!xl2.Elements().Any())
+            {
+                return string.Empty;
+            }
+
+            XElement summary = xl2.Elements("summary").FirstOrDefault();
+            if (summary == null)
+            {
+                summary = xl2.Elements().First();
+            }
+
+            string res = RemoveExtraWhite(summary.Value);
+
+            foreach (XElement additional in xl2.Elements().GroupBy(e => e.Name.LocalName).Where(g => g.First().Name.LocalName != summary.Name.LocalName).Select(g => g.First()))
+            {
+                res += $" *{System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(additional.Name.LocalName)}*: {RemoveExtraWhite(additional.Value)}";
+            }
+
+            return res;
+        }
+
+        [Fact]
+        public void Ttt()
+        {
+            string aaa = CommentToTxt(tst);
+
+            Microsoft.Build.Tasks.CallTarget ct = new CallTarget();
+            var v = ct.BuildEngine6;
+
+            string codeBase = typeof(Microsoft.Build.Tasks.CallTarget).Assembly.CodeBase;
+
+            UriBuilder uri = new UriBuilder(codeBase);
+            string path = Uri.UnescapeDataString(uri.Path);
+
+            string xmlPath = Path.ChangeExtension(path, ".xml");
+
+            Assert.True(File.Exists(xmlPath));
+
+            // var doc = new XmlDocument();
+            // doc.Load(xmlPath);
+
+            LoadXmlDocumentation(xmlPath);
+
+            string docText = GetDocumentation(typeof(Microsoft.Build.Tasks.Exec));
+
+
+            string docText2 = GetDocumentation(typeof(Microsoft.Build.Tasks.CallTarget));
+
+            XElement xe = XElement.Parse(docText2);
+            string s = xe.Value;
+
+
+            string tbl = string.Join(Environment.NewLine,
+
+                AppDomain
+                    .CurrentDomain
+                    .GetAssemblies()
+                    // TaskHost is copying code files - so has a copy of types with identical names.
+                    .Where(a => a.FullName!.StartsWith("Microsoft.Build.Tasks", StringComparison.CurrentCultureIgnoreCase))
+                    .SelectMany(s => s.GetTypes())
+                    .Where(IsTaskImpl)
+                    .Select(t => (name: t.Name,doc: GetDocumentation(t)))
+                    .OrderBy(tpl => tpl.name)
+                    //.Select(tpl => $"| {tpl.name} | {CommentToTxt(tpl.doc)} |"));
+                    .Select(tpl => $"**{tpl.name}:** {CommentToTxt(tpl.doc)}"));
+
+            Assert.Fail(tbl);
+
+
+            string types = string.Join(Environment.NewLine, 
+
+            AppDomain
+                .CurrentDomain
+                .GetAssemblies()
+                // TaskHost is copying code files - so has a copy of types with identical names.
+                .Where(a => a.FullName!.StartsWith("Microsoft.Build.Tasks", StringComparison.CurrentCultureIgnoreCase))
+                .SelectMany(s => s.GetTypes())
+                .Where(IsTaskImpl)
+                .Select(t => t.FullName));
+
+            var tmp = AppDomain
+                .CurrentDomain
+                .GetAssemblies()
+                // TaskHost is copying code files - so has a copy of types with identical names.
+                .Where(a => a.FullName.StartsWith("Microsoft.Build.Tasks", StringComparison.CurrentCultureIgnoreCase))
+                .SelectMany(s => s.GetTypes());
+
+
+            int cnt = AppDomain
+                .CurrentDomain
+                .GetAssemblies()
+                // TaskHost is copying code files - so has a copy of types with identical names.
+                .Where(a => a.FullName!.StartsWith("Microsoft.Build.Tasks", StringComparison.CurrentCultureIgnoreCase))
+                .SelectMany(s => s.GetTypes())
+                .Where(IsTaskImpl)
+                .Select(t => t.FullName)
+                .Count();
+            Assert.Fail(cnt.ToString());
+
+
+
+            Assert.Fail(types);
+
+            bool IsTaskImpl(Type type)
+            {
+                return type.IsClass &&
+                       !type.IsAbstract &&
+                       typeof(ITask).IsAssignableFrom(type);
+            }
+        }
+
 
         [Theory]
         [MemberData(nameof(GetBuildExceptionsAsTestData))]
