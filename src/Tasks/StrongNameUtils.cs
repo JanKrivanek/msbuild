@@ -49,10 +49,8 @@ namespace Microsoft.Build.Tasks
                     int fileLength = (int)fs.Length;
                     keyFileContents = new byte[fileLength];
 
-#pragma warning disable CA2022 // Avoid inexact read with 'Stream.Read'
                     // TODO: Read the count of read bytes and check if it matches the expected length, if not raise an exception
-                    fs.Read(keyFileContents, 0, fileLength);
-#pragma warning restore CA2022 // Avoid inexact read with 'Stream.Read'
+                    fs.ReadExactly(keyFileContents, 0, fileLength);
                 }
             }
             catch (ArgumentException e)
@@ -137,7 +135,7 @@ namespace Microsoft.Build.Tasks
         /// <returns></returns>
         internal static StrongNameLevel GetAssemblyStrongNameLevel(string assemblyPath)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(assemblyPath, nameof(assemblyPath));
+            ErrorUtilities.VerifyThrowArgumentNull(assemblyPath);
 
             StrongNameLevel snLevel = StrongNameLevel.Unknown;
             IntPtr fileHandle = NativeMethods.InvalidIntPtr;

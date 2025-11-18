@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
-using System.Xml;
 using Microsoft.Build.BackEnd.Logging;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
@@ -15,7 +14,6 @@ using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Xunit;
-using Xunit.NetCore.Extensions;
 using InternalUtilities = Microsoft.Build.Internal.Utilities;
 using InvalidProjectFileException = Microsoft.Build.Exceptions.InvalidProjectFileException;
 using LoggerMode = Microsoft.Build.BackEnd.Logging.LoggerMode;
@@ -49,25 +47,25 @@ namespace Microsoft.Build.UnitTests.Definition
 
             foreach (string expectedRegisteredTask in expectedRegisteredTasks)
             {
-                Assert.True(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, null)),
+                Assert.True(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Expected task '{0}' registered!", expectedRegisteredTask));
             }
 
             foreach (string expectedRegisteredTask in expectedOverrideTasks)
             {
-                Assert.True(taskoverrideRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, null)),
+                Assert.True(taskoverrideRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Expected task '{0}' registered!", expectedRegisteredTask));
             }
 
             foreach (string unexpectedRegisteredTask in unexpectedRegisteredTasks)
             {
-                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, null)),
+                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Unexpected task '{0}' registered!", unexpectedRegisteredTask));
             }
 
             foreach (string unexpectedRegisteredTask in unexpectedOverrideRegisteredTasks)
             {
-                Assert.False(taskoverrideRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, null)),
+                Assert.False(taskoverrideRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Unexpected task '{0}' registered!", unexpectedRegisteredTask));
             }
         }
@@ -174,12 +172,12 @@ namespace Microsoft.Build.UnitTests.Definition
 
             foreach (string expectedRegisteredTask in expectedRegisteredTasks)
             {
-                Assert.True(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, null)),
+                Assert.True(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(expectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Expected task '{0}' registered!", expectedRegisteredTask));
             }
             foreach (string unexpectedRegisteredTask in unexpectedRegisteredTasks)
             {
-                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, null)),
+                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, TaskHostParameters.Empty)),
                               String.Format("Unexpected task '{0}' registered!", unexpectedRegisteredTask));
             }
         }
@@ -204,7 +202,7 @@ namespace Microsoft.Build.UnitTests.Definition
             Assert.Equal(1, mockLogger.WarningCount); // "Expected 1 warning logged!"
             foreach (string unexpectedRegisteredTask in unexpectedRegisteredTasks)
             {
-                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, null)),
+                Assert.False(taskRegistry.TaskRegistrations.ContainsKey(new TaskRegistry.RegisteredTaskIdentity(unexpectedRegisteredTask, TaskHostParameters.Empty)),
                                String.Format("Unexpected task '{0}' registered!", unexpectedRegisteredTask));
             }
         }

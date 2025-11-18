@@ -186,7 +186,7 @@ namespace Microsoft.Build.Tasks
         /// Get the source items for this reference.
         ///  This is collection of ITaskItems.
         /// </summary>
-        internal ICollection<ITaskItem> GetSourceItems()
+        internal Dictionary<string, ITaskItem>.ValueCollection GetSourceItems()
         {
             return _sourceItems.Values;
         }
@@ -725,7 +725,7 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         internal void AddPreUnificationVersion(String referencePath, Version version, UnificationReason reason)
         {
-            string key = referencePath + version.ToString() + reason.ToString();
+            string key = $"{referencePath}{version}{reason}";
 
             // Only add a reference, version, and reason once.
             UnificationVersion unificationVersion;

@@ -1,8 +1,6 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.IO;
-using System.Xml;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 
@@ -21,7 +19,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// <returns>A project instance.</returns>
         internal static ProjectInstance CreateEmptyProjectInstance()
         {
-            using ProjectFromString projectFromString = new( @"<Project>
+            using ProjectFromString projectFromString = new(@"<Project>
                       <Target Name='foo'/>
                   </Project>");
             Project project = projectFromString.Project;

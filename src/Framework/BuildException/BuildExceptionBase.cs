@@ -20,12 +20,12 @@ public abstract class BuildExceptionBase : Exception
         : base()
     { }
 
-    private protected BuildExceptionBase(string message)
+    private protected BuildExceptionBase(string? message)
         : base(message)
     { }
 
     private protected BuildExceptionBase(
-        string message,
+        string? message,
         Exception? inner)
         : base(message, inner)
     { }
@@ -89,7 +89,7 @@ public abstract class BuildExceptionBase : Exception
 #if NET || NET45_OR_GREATER
         int? hresult = exception.HResult;
 #else
-            int? hresult = null;
+        int? hresult = null;
 #endif
         writer.WriteOptionalInt32(hresult);
 

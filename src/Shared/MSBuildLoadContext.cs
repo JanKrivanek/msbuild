@@ -6,7 +6,6 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
-using Microsoft.Build.Framework;
 using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Shared
@@ -41,7 +40,7 @@ namespace Microsoft.Build.Shared
             // We should maintain previous behavior in the absence of new data (a .deps.json file) indicating that we
             // should do something different.
             // Setting the _resolver to null essentially just opts out of the new behavior.
-            _resolver = File.Exists(assemblyPath) && File.Exists(Path.ChangeExtension(assemblyPath, ".deps.json"))
+            _resolver = FileSystems.Default.FileExists(assemblyPath) && FileSystems.Default.FileExists(Path.ChangeExtension(assemblyPath, ".deps.json"))
                 ? new AssemblyDependencyResolver(assemblyPath) :
                 null;
         }

@@ -8,7 +8,6 @@ namespace Microsoft.Build.AppxPackage.Shared
 #else
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
@@ -74,10 +73,32 @@ namespace Microsoft.Build.Shared
                     : FileUtilities.TempFileDirectory;
         }
 
+        private static string s_debugDumpPathInRunningTests = GetDebugDumpPath();
+        internal static bool ResetDebugDumpPathInRunningTests = false;
+
         /// <summary>
         /// The directory used for diagnostic log files.
         /// </summary>
-        internal static string DebugDumpPath => s_debugDumpPath;
+        internal static string DebugDumpPath
+        {
+            get
+            {
+                if (BuildEnvironmentHelper.Instance.RunningTests)
+                {
+                    if (ResetDebugDumpPathInRunningTests)
+                    {
+                        s_debugDumpPathInRunningTests = GetDebugDumpPath();
+                        // reset dump file name so new one is created in new path
+                        s_dumpFileName = null;
+                        ResetDebugDumpPathInRunningTests = false;
+                    }
+
+                    return s_debugDumpPathInRunningTests;
+                }
+
+                return s_debugDumpPath;
+            }
+        }
 
         /// <summary>
         /// The file used for diagnostic log files.
@@ -352,7 +373,7 @@ namespace Microsoft.Build.Shared
                         // because we're a child node with no console to log to, so die
                         Directory.CreateDirectory(DebugDumpPath);
 
-                        var pid = Process.GetCurrentProcess().Id;
+                        var pid = EnvironmentUtilities.CurrentProcessId;
                         // This naming pattern is assumed in ReadAnyExceptionFromFile
                         s_dumpFileName = Path.Combine(DebugDumpPath, $"MSBuild_pid-{pid}_{guid:n}.failure.txt");
 
@@ -372,7 +393,7 @@ namespace Microsoft.Build.Shared
                     }
                 }
             }
-            
+
             // Some customers experience exceptions such as 'OutOfMemory' errors when msbuild attempts to log errors to a local file.
             // This catch helps to prevent the application from crashing in this best-effort dump-diagnostics path,
             // but doesn't prevent the overall crash from going to Watson.
@@ -392,13 +413,13 @@ namespace Microsoft.Build.Shared
 
             foreach (string file in files)
             {
-                if (File.GetLastWriteTimeUtc(file) >= fromTimeUtc)
+                if (FileSystems.Default.GetLastWriteTimeUtc(file) >= fromTimeUtc)
                 {
                     builder.Append(Environment.NewLine);
                     builder.Append(file);
                     builder.Append(':');
                     builder.Append(Environment.NewLine);
-                    builder.Append(File.ReadAllText(file));
+                    builder.Append(FileSystems.Default.ReadFileAllText(file));
                     builder.Append(Environment.NewLine);
                 }
             }

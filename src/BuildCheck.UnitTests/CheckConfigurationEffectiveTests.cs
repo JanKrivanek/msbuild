@@ -1,19 +1,19 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using Xunit;
-using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
-using Microsoft.Build.Experimental.BuildCheck;
-using Shouldly;
 using System;
+using Microsoft.Build.Experimental.BuildCheck;
+using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
+using Shouldly;
+using Xunit;
 
 namespace Microsoft.Build.BuildCheck.UnitTests;
 
 public class CheckConfigurationEffectiveTests
 {
     [Theory]
-    [InlineData("ruleId", EvaluationCheckScope.ProjectFileOnly, CheckResultSeverity.Warning,  true)]
-    [InlineData("ruleId2", EvaluationCheckScope.ProjectFileOnly, CheckResultSeverity.Warning,  true)]
+    [InlineData("ruleId", EvaluationCheckScope.ProjectFileOnly, CheckResultSeverity.Warning, true)]
+    [InlineData("ruleId2", EvaluationCheckScope.ProjectFileOnly, CheckResultSeverity.Warning, true)]
     [InlineData("ruleId", EvaluationCheckScope.ProjectFileOnly, CheckResultSeverity.Error, false)]
     public void IsSameConfigurationAsTest(
         string secondRuleId,
@@ -35,7 +35,7 @@ public class CheckConfigurationEffectiveTests
     }
 
     [Theory]
-    [InlineData( CheckResultSeverity.Warning, true)]
+    [InlineData(CheckResultSeverity.Warning, true)]
     [InlineData(CheckResultSeverity.Suggestion, true)]
     [InlineData(CheckResultSeverity.Error, true)]
     [InlineData(CheckResultSeverity.None, false)]

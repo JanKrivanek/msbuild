@@ -4,9 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Shared;
 
@@ -25,7 +22,7 @@ namespace Microsoft.Build.Instance
             TCached? itemTypeDefinition,
             Func<TCached, T> getInstance)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(getInstance, nameof(getInstance));
+            ErrorUtilities.VerifyThrowArgumentNull(getInstance);
 
             _itemList = itemList;
             _itemTypeDefinition = itemTypeDefinition;

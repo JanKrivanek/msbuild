@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Xml;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
@@ -306,6 +305,27 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 </ItemGroup>
             </Target>
             </Project>");
+            IntrinsicTask task = CreateIntrinsicTask(content);
+            Lookup lookup = LookupHelpers.CreateEmptyLookup();
+            ExecuteTask(task, lookup);
+
+            var group = lookup.GetItems("i1");
+            Assert.Single(group);
+        }
+
+        [Fact]
+        public void ItemKeepDuplicatesFalseTwoDuplicatesAtOnce()
+        {
+            string content = ObjectModelHelpers.CleanupFileContents("""
+            <Project>
+            <Target Name='t'>
+                <ItemGroup>
+                    <i1 Include='a1'/>
+                    <i1 Include='a1;a1' KeepDuplicates='false' />
+                </ItemGroup>
+            </Target>
+            </Project>
+            """);
             IntrinsicTask task = CreateIntrinsicTask(content);
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
@@ -896,8 +916,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             logger.AssertLogDoesntContain("[a1][b1]");
             logger.ClearLog();
 
-           content = ObjectModelHelpers.CleanupFileContents(
-            @"<Project ToolsVersion='msbuilddefaulttoolsversion' xmlns='msbuildnamespace'>
+            content = ObjectModelHelpers.CleanupFileContents(
+             @"<Project ToolsVersion='msbuilddefaulttoolsversion' xmlns='msbuildnamespace'>
             <Target Name='t'>
                 <ItemGroup Condition='true'>
                     <i1 Include='a1'/>

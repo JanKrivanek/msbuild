@@ -2,6 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+#if NET
+using System.Diagnostics.CodeAnalysis;
+#endif
 
 #nullable disable
 
@@ -71,7 +74,7 @@ namespace Microsoft.Build.Framework
         /// <param name="eventTimestamp">Timestamp when event was created</param>
         /// <param name="messageArgs">Message arguments</param>
         protected CustomBuildEventArgs(
-            string message,
+            [StringSyntax(StringSyntaxAttribute.CompositeFormat)] string message,
             string helpKeyword,
             string senderName,
             DateTime eventTimestamp,

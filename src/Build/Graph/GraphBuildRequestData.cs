@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.Build.Execution;
+#if NETFRAMEWORK
 using Microsoft.Build.Experimental.BuildCheck;
-using Microsoft.Build.Framework;
+#endif
 using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.Graph
@@ -55,7 +56,7 @@ namespace Microsoft.Build.Graph
         public GraphBuildRequestData(ProjectGraph projectGraph, ICollection<string> targetsToBuild, HostServices? hostServices, BuildRequestDataFlags flags)
             : this(targetsToBuild, hostServices, flags)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectGraph, nameof(projectGraph));
+            ErrorUtilities.VerifyThrowArgumentNull(projectGraph);
 
             ProjectGraph = projectGraph;
         }
@@ -149,7 +150,7 @@ namespace Microsoft.Build.Graph
         public GraphBuildRequestData(IEnumerable<ProjectGraphEntryPoint> projectGraphEntryPoints, ICollection<string> targetsToBuild, HostServices? hostServices, BuildRequestDataFlags flags)
             : this(targetsToBuild, hostServices, flags)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectGraphEntryPoints, nameof(projectGraphEntryPoints));
+            ErrorUtilities.VerifyThrowArgumentNull(projectGraphEntryPoints);
 
             ProjectGraphEntryPoints = projectGraphEntryPoints;
         }
@@ -157,7 +158,7 @@ namespace Microsoft.Build.Graph
         public GraphBuildRequestData(IEnumerable<ProjectGraphEntryPoint> projectGraphEntryPoints, ICollection<string> targetsToBuild, HostServices? hostServices, BuildRequestDataFlags flags, GraphBuildOptions graphBuildOptions)
             : this(targetsToBuild, hostServices, flags, graphBuildOptions)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectGraphEntryPoints, nameof(projectGraphEntryPoints));
+            ErrorUtilities.VerifyThrowArgumentNull(projectGraphEntryPoints);
 
             ProjectGraphEntryPoints = projectGraphEntryPoints.ToList();
         }

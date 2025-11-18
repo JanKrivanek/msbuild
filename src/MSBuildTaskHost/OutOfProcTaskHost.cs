@@ -90,9 +90,13 @@ namespace Microsoft.Build.CommandLine
 #endif
                 case "2":
                     // Sometimes easier to attach rather than deal with JIT prompt
-                    Process currentProcess = Process.GetCurrentProcess();
-                    Console.WriteLine($"Waiting for debugger to attach ({currentProcess.MainModule.FileName} PID {currentProcess.Id}).  Press enter to continue...");
+                    Console.WriteLine($"Waiting for debugger to attach ({EnvironmentUtilities.ProcessPath} PID {EnvironmentUtilities.CurrentProcessId}).  Press enter to continue...");
+
                     Console.ReadLine();
+                    break;
+                case "3":
+                    // Value "3" skips debugging for TaskHost processes but debugs the main MSBuild process
+                    // This is useful when you want to debug MSBuild but not the child TaskHost processes
                     break;
             }
 

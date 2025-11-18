@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,12 +25,7 @@ namespace Microsoft.Build.Experimental
         /// <summary>
         /// A callback used to execute command line build.
         /// </summary>
-        public delegate (int exitCode, string exitType) BuildCallback(
-#if FEATURE_GET_COMMANDLINE
-            string commandLine);
-#else
-            string[] commandLine);
-#endif
+        public delegate (int exitCode, string exitType) BuildCallback(string commandLine);
 
         private readonly BuildCallback _buildFunction;
 
@@ -101,7 +94,7 @@ namespace Microsoft.Build.Experimental
         public NodeEngineShutdownReason Run(out Exception? shutdownException)
         {
             ServerNodeHandshake handshake = new(
-                CommunicationsUtilities.GetHandshakeOptions(taskHost: false, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture()));
+                CommunicationsUtilities.GetHandshakeOptions(taskHost: false, taskHostParameters: TaskHostParameters.Empty, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture()));
 
             _serverBusyMutexName = GetBusyServerMutexName(handshake);
 
@@ -210,6 +203,16 @@ namespace Microsoft.Build.Experimental
         void INodePacketFactory.DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, ITranslator translator)
         {
             _packetFactory.DeserializeAndRoutePacket(nodeId, packetType, translator);
+        }
+
+        /// <summary>
+        /// Deserializes a packet.
+        /// </summary>
+        /// <param name="packetType">The packet type.</param>
+        /// <param name="translator">The translator to use as a source for packet data.</param>
+        INodePacket INodePacketFactory.DeserializePacket(NodePacketType packetType, ITranslator translator)
+        {
+            return _packetFactory.DeserializePacket(packetType, translator);
         }
 
         /// <summary>
@@ -350,7 +353,7 @@ namespace Microsoft.Build.Experimental
             using var serverBusyMutex = ServerNamedMutex.OpenOrCreateMutex(name: _serverBusyMutexName, createdNew: out var holdsMutex);
             if (!holdsMutex)
             {
-                // Client must have send request message to server even though serer is busy.
+                // Client must have send request message to server even though server is busy.
                 // It is not a race condition, as client exclusivity is also guaranteed by name pipe which allows only one client to connect.
                 _shutdownException = new InvalidOperationException("Client requested build while server is busy processing previous client build request.");
                 _shutdownReason = NodeEngineShutdownReason.Error;
@@ -381,7 +384,7 @@ namespace Microsoft.Build.Experimental
                 BuildTelemetry buildTelemetry = KnownTelemetry.PartialBuildTelemetry ??= new BuildTelemetry();
 
                 buildTelemetry.StartAt = command.PartialBuildTelemetry.StartedAt;
-                buildTelemetry.InitialServerState = command.PartialBuildTelemetry.InitialServerState;
+                buildTelemetry.InitialMSBuildServerState = command.PartialBuildTelemetry.InitialServerState;
                 buildTelemetry.ServerFallbackReason = command.PartialBuildTelemetry.ServerFallbackReason;
             }
 
@@ -438,7 +441,7 @@ namespace Microsoft.Build.Experimental
         {
             private readonly Action<string> _writeCallback;
             private readonly Timer _timer;
-            private readonly object _lock = new();
+            private readonly LockType _lock = new LockType();
             private readonly StringWriter _internalWriter;
 
             public RedirectConsoleWriter(Action<string> writeCallback)

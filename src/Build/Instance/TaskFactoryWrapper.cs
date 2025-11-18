@@ -68,10 +68,14 @@ namespace Microsoft.Build.Execution
         private string _taskName;
 
         /// <summary>
-        /// The set of special parameters that, along with the name, contribute to the identity of
-        /// this factory.
+        /// The set of special parameters that, along with the name, contribute to the identity of this factory.
         /// </summary>
-        private IDictionary<string, string> _factoryIdentityParameters;
+        private TaskHostParameters _factoryIdentityParameters;
+
+        /// <summary>
+        /// An execution statistics holder.
+        /// </summary>
+        internal TaskRegistry.RegisteredTaskRecord.Stats? Statistics { get; private init; }
 
         #endregion
 
@@ -80,15 +84,21 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Creates an instance of this class for the given type.
         /// </summary>
-        internal TaskFactoryWrapper(ITaskFactory taskFactory, LoadedType taskFactoryLoadInfo, string taskName, IDictionary<string, string> factoryIdentityParameters)
+        internal TaskFactoryWrapper(
+            ITaskFactory taskFactory,
+            LoadedType taskFactoryLoadInfo,
+            string taskName,
+            TaskHostParameters factoryIdentityParameters,
+            TaskRegistry.RegisteredTaskRecord.Stats? statistics = null)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(taskFactory, nameof(taskFactory));
-            ErrorUtilities.VerifyThrowArgumentLength(taskName, nameof(taskName));
+            ErrorUtilities.VerifyThrowArgumentNull(taskFactory);
+            ErrorUtilities.VerifyThrowArgumentLength(taskName);
             _taskFactory = taskFactory;
             _taskName = taskName;
             TaskFactoryLoadedType = taskFactoryLoadInfo;
             _factoryIdentityParameters = factoryIdentityParameters;
             _propertyData = new Lazy<PropertyData>(PopulatePropertyInfo);
+            Statistics = statistics;
         }
 
         #endregion
@@ -156,13 +166,7 @@ namespace Microsoft.Build.Execution
         /// The set of task identity parameters that were set on
         /// this particular factory's UsingTask statement.
         /// </summary>
-        public IDictionary<string, string> FactoryIdentityParameters
-        {
-            get
-            {
-                return _factoryIdentityParameters;
-            }
-        }
+        public TaskHostParameters FactoryIdentityParameters => _factoryIdentityParameters;
 
         #endregion
 
@@ -197,8 +201,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal void SetPropertyValue(ITask task, TaskPropertyInfo property, object value)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(task, nameof(task));
-            ErrorUtilities.VerifyThrowArgumentNull(property, nameof(property));
+            ErrorUtilities.VerifyThrowArgumentNull(task);
+            ErrorUtilities.VerifyThrowArgumentNull(property);
 
             IGeneratedTask? generatedTask = task as IGeneratedTask;
             if (generatedTask != null)
@@ -217,8 +221,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal object? GetPropertyValue(ITask task, TaskPropertyInfo property)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(task, nameof(task));
-            ErrorUtilities.VerifyThrowArgumentNull(property, nameof(property));
+            ErrorUtilities.VerifyThrowArgumentNull(task);
+            ErrorUtilities.VerifyThrowArgumentNull(property);
 
             IGeneratedTask? generatedTask = task as IGeneratedTask;
             if (generatedTask != null)

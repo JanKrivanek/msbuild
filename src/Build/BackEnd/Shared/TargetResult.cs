@@ -22,6 +22,11 @@ namespace Microsoft.Build.Execution
     public class TargetResult : ITargetResult, ITranslatable
     {
         /// <summary>
+        /// Lock for cache file access.
+        /// </summary>
+        private readonly object _lock = new();
+
+        /// <summary>
         /// The result for this target.
         /// </summary>
         private WorkUnitResult _result;
@@ -65,8 +70,8 @@ namespace Microsoft.Build.Execution
         /// </param>
         internal TargetResult(TaskItem[] items, WorkUnitResult result, BuildEventContext originalBuildEventContext = null)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(items, nameof(items));
-            ErrorUtilities.VerifyThrowArgumentNull(result, nameof(result));
+            ErrorUtilities.VerifyThrowArgumentNull(items);
+            ErrorUtilities.VerifyThrowArgumentNull(result);
             _items = items;
             _result = result;
             _originalBuildEventContext = originalBuildEventContext;
@@ -100,9 +105,17 @@ namespace Microsoft.Build.Execution
             [DebuggerStepThrough]
             get
             {
-                lock (_result)
+                lock (_lock)
                 {
-                    RetrieveItemsFromCache();
+                    if (_items == null)
+                    {
+                        string cacheFile = GetCacheFile(_cacheInfo.ConfigId, _cacheInfo.TargetName);
+                        using Stream stream = File.OpenRead(cacheFile);
+                        using ITranslator resultCacheTranslator = GetResultsCacheTranslator(TranslationDirection.ReadFromStream, stream);
+
+                        TranslateItems(resultCacheTranslator);
+                        _cacheInfo = new CacheInfo();
+                    }
 
                     return _items;
                 }
@@ -136,6 +149,22 @@ namespace Microsoft.Build.Execution
             }
         }
 
+        public string TargetResultCodeToString()
+        {
+            switch (ResultCode)
+            {
+                case TargetResultCode.Failure:
+                    return nameof(TargetResultCode.Failure);
+                case TargetResultCode.Skipped:
+                    return nameof(TargetResultCode.Skipped);
+                case TargetResultCode.Success:
+                    return nameof(TargetResultCode.Success);
+                default:
+                    Debug.Fail($"Unknown enum value: {ResultCode}");
+                    return ResultCode.ToString();
+            }
+        }
+
         /// <summary>
         /// Returns the internal result for the target.
         /// </summary>
@@ -143,6 +172,9 @@ namespace Microsoft.Build.Execution
         {
             [DebuggerStepThrough]
             get => _result;
+
+            [DebuggerStepThrough]
+            set => _result = value;
         }
 
         /// <summary>
@@ -174,6 +206,13 @@ namespace Microsoft.Build.Execution
             set => _afterTargetsHaveFailed = value;
         }
 
+        /// <summary>
+        /// The defining location of the target for which this is a result.
+        /// This is not intended to be remoted via node-2-node remoting - it's intended only for in-node telemetry.
+        /// Warning!: This data is not guaranteed to be populated when Telemetry is not being collected (e.g. this is "sampled out")
+        /// </summary>
+        internal IElementLocation TargetLocation { get; set; }
+
         #region INodePacketTranslatable Members
 
         /// <summary>
@@ -183,11 +222,20 @@ namespace Microsoft.Build.Execution
         {
             if (translator.Mode == TranslationDirection.WriteToStream)
             {
-                lock (_result)
+                lock (_lock)
                 {
                     // Should we have cached these items but now want to send them to another node, we need to
                     // ensure they are loaded before doing so.
-                    RetrieveItemsFromCache();
+                    if (_items == null)
+                    {
+                        string cacheFile = GetCacheFile(_cacheInfo.ConfigId, _cacheInfo.TargetName);
+                        using Stream stream = File.OpenRead(cacheFile);
+                        using ITranslator resultCacheTranslator = GetResultsCacheTranslator(TranslationDirection.ReadFromStream, stream);
+
+                        TranslateItems(resultCacheTranslator);
+                        _cacheInfo = new CacheInfo();
+                    }
+
                     InternalTranslate(translator);
                 }
             }
@@ -231,7 +279,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal void CacheItems(int configId, string targetName)
         {
-            lock (_result)
+            lock (_lock)
             {
                 if (_items == null)
                 {
@@ -276,25 +324,6 @@ namespace Microsoft.Build.Execution
             translator.Translate(ref _afterTargetsHaveFailed);
             translator.TranslateOptionalBuildEventContext(ref _originalBuildEventContext);
             TranslateItems(translator);
-        }
-
-        /// <summary>
-        /// Retrieve the items from the cache.
-        /// </summary>
-        private void RetrieveItemsFromCache()
-        {
-            lock (_result)
-            {
-                if (_items == null)
-                {
-                    string cacheFile = GetCacheFile(_cacheInfo.ConfigId, _cacheInfo.TargetName);
-                    using Stream stream = File.OpenRead(cacheFile);
-                    using ITranslator translator = GetResultsCacheTranslator(TranslationDirection.ReadFromStream, stream);
-
-                    TranslateItems(translator);
-                    _cacheInfo = new CacheInfo();
-                }
-            }
         }
 
         private void TranslateItems(ITranslator translator)

@@ -2,15 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Build.BackEnd.Logging;
-using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
-using Microsoft.Build.Experimental;
-using Microsoft.Build.Framework;
 using System.IO;
+using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
 
 namespace Microsoft.Build.Experimental.BuildCheck;
 
@@ -23,9 +16,9 @@ public abstract class CheckData(string projectFilePath, int? projectConfiguratio
 {
     private string? _projectFileDirectory;
     // The id is going to be used in future revision
-#pragma warning disable CA1823
+#pragma warning disable CA1823, IDE0052
     private int? _projectConfigurationId = projectConfigurationId;
-#pragma warning restore CA1823
+#pragma warning restore CA1823, IDE0052
 
     /// <summary>
     /// Full path to the project file being built.

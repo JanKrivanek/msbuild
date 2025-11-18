@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -124,6 +125,11 @@ namespace Microsoft.Build.Execution
         /// Properties originating from environment variables, gotten from the project collection
         /// </summary>
         private PropertyDictionary<ProjectPropertyInstance> _environmentVariableProperties;
+
+        /// <summary>
+        /// Properties originating from SDK resolution-reported environment variables
+        /// </summary>
+        private PropertyDictionary<ProjectPropertyInstance> _sdkResolvedEnvironmentVariableProperties;
 
         /// <summary>
         /// Items in the project. This is a dictionary of ordered lists of a single type of items keyed by item type.
@@ -294,7 +300,7 @@ namespace Microsoft.Build.Execution
         private ProjectInstance(string projectFile, IDictionary<string, string> globalProperties, string toolsVersion, string subToolsetVersion, ProjectCollection projectCollection,
             ProjectLoadSettings? projectLoadSettings, EvaluationContext evaluationContext, IDirectoryCacheFactory directoryCacheFactory, bool interactive)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(projectFile, nameof(projectFile));
+            ErrorUtilities.VerifyThrowArgumentLength(projectFile);
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(toolsVersion, nameof(toolsVersion));
 
             // We do not control the current directory at this point, but assume that if we were
@@ -368,7 +374,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public ProjectInstance(Project project, ProjectInstanceSettings settings)
         {
-            ErrorUtilities.VerifyThrowInternalNull(project, nameof(project));
+            ErrorUtilities.VerifyThrowInternalNull(project);
 
             var projectPath = project.FullPath;
             _directory = Path.GetDirectoryName(projectPath);
@@ -402,11 +408,7 @@ namespace Microsoft.Build.Execution
 
             this.ProjectRootElementCache = project.ProjectCollection.ProjectRootElementCache;
 
-            this.EvaluatedItemElements = new List<ProjectItemElement>(project.Items.Count);
-            foreach (var item in project.Items)
-            {
-                this.EvaluatedItemElements.Add(item.Xml);
-            }
+            this.EvaluatedItemElements = new List<ProjectItemElement>();
 
             _usingDifferentToolsVersionFromProjectFile = false;
             _originalProjectToolsVersion = project.ToolsVersion;
@@ -425,7 +427,7 @@ namespace Microsoft.Build.Execution
         /// <param name="fastItemLookupNeeded">Whether the fast item lookup cache is required.</param>
         private ProjectInstance(Project linkedProject, bool fastItemLookupNeeded)
         {
-            ErrorUtilities.VerifyThrowInternalNull(linkedProject, nameof(linkedProject));
+            ErrorUtilities.VerifyThrowInternalNull(linkedProject);
 
             var projectPath = linkedProject.FullPath;
             _directory = Path.GetDirectoryName(projectPath);
@@ -464,31 +466,59 @@ namespace Microsoft.Build.Execution
             InitializeTargetsData(null, null, null, null);
 
             // Imports
-            var importsListConverter = new ImmutableStringValuedListConverter<ResolvedImport>(linkedProject.Imports, GetImportFullPath);
-            _importPaths = importsListConverter;
-            ImportPaths = importsListConverter;
+            var lazyImportsList = new LazyStringValuedList(linkedProject.Link, GetImportFullPaths);
+            _importPaths = lazyImportsList;
+            ImportPaths = lazyImportsList;
 
-            importsListConverter = new ImmutableStringValuedListConverter<ResolvedImport>(linkedProject.ImportsIncludingDuplicates, GetImportFullPath);
-            _importPathsIncludingDuplicates = importsListConverter;
-            ImportPathsIncludingDuplicates = importsListConverter;
+            lazyImportsList = new LazyStringValuedList(linkedProject.Link, GetImportFullPathsIncludingDuplicates);
+            _importPathsIncludingDuplicates = lazyImportsList;
+            ImportPathsIncludingDuplicates = lazyImportsList;
 
-            Toolset = linkedProject.ProjectCollection.GetToolset(linkedProject.ToolsVersion);
+            Toolset = string.IsNullOrEmpty(linkedProject.ToolsVersion) ? null : linkedProject.ProjectCollection.GetToolset(linkedProject.ToolsVersion);
             SubToolsetVersion = linkedProject.SubToolsetVersion;
-            TaskRegistry = new TaskRegistry(Toolset, linkedProject.ProjectCollection.ProjectRootElementCache);
+            TaskRegistry = Toolset is null ? new TaskRegistry(linkedProject.ProjectCollection.ProjectRootElementCache) : new TaskRegistry(Toolset, linkedProject.ProjectCollection.ProjectRootElementCache);
 
             ProjectRootElementCache = linkedProject.ProjectCollection.ProjectRootElementCache;
 
-            EvaluatedItemElements = new List<ProjectItemElement>(linkedProject.Items.Count);
-            foreach (var item in linkedProject.Items)
-            {
-                EvaluatedItemElements.Add(item.Xml);
-            }
+            EvaluatedItemElements = new List<ProjectItemElement>();
 
             _usingDifferentToolsVersionFromProjectFile = false;
             _originalProjectToolsVersion = linkedProject.ToolsVersion;
             _explicitToolsVersionSpecified = linkedProject.SubToolsetVersion != null;
 
             _isImmutable = true;
+
+            static List<string> GetImportFullPaths(ObjectModelRemoting.ProjectLink projectLink)
+            {
+                // Imports collection contains ResolvedImports, which are structures which are much bigger than the string list.
+                // We convert to the string list and let Imports itself to BE GCed.
+                var imports = projectLink.Imports;
+                var paths = new List<string>(imports.Count);
+                foreach (var import in imports)
+                {
+                    if (import.ImportedProject != null)
+                    {
+                        paths.Add(import.ImportedProject.FullPath);
+                    }
+                }
+
+                return paths;
+            }
+
+            static List<string> GetImportFullPathsIncludingDuplicates(ObjectModelRemoting.ProjectLink projectLink)
+            {
+                var imports = projectLink.ImportsIncludingDuplicates;
+                var paths = new List<string>(imports.Count);
+                foreach (var import in imports)
+                {
+                    if (import.ImportedProject != null)
+                    {
+                        paths.Add(import.ImportedProject.FullPath);
+                    }
+                }
+
+                return paths;
+            }
         }
 
         /// <summary>
@@ -541,6 +571,7 @@ namespace Microsoft.Build.Execution
             _actualTargets = new RetrievableEntryHashSet<ProjectTargetInstance>(StringComparer.OrdinalIgnoreCase);
             _targets = new ObjectModel.ReadOnlyDictionary<string, ProjectTargetInstance>(_actualTargets);
             _environmentVariableProperties = projectToInheritFrom._environmentVariableProperties;
+            _sdkResolvedEnvironmentVariableProperties = projectToInheritFrom._sdkResolvedEnvironmentVariableProperties;
             _itemDefinitions = new RetrievableEntryHashSet<ProjectItemDefinitionInstance>(projectToInheritFrom._itemDefinitions, MSBuildNameIgnoreCaseComparer.Default);
             _hostServices = projectToInheritFrom._hostServices;
             this.ProjectRootElementCache = projectToInheritFrom.ProjectRootElementCache;
@@ -612,9 +643,9 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal ProjectInstance(string projectFile, IDictionary<string, string> globalProperties, string toolsVersion, BuildParameters buildParameters, ILoggingService loggingService, BuildEventContext buildEventContext, ISdkResolverService sdkResolverService, int submissionId, ProjectLoadSettings? projectLoadSettings)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(projectFile, nameof(projectFile));
+            ErrorUtilities.VerifyThrowArgumentLength(projectFile);
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(toolsVersion, nameof(toolsVersion));
-            ErrorUtilities.VerifyThrowArgumentNull(buildParameters, nameof(buildParameters));
+            ErrorUtilities.VerifyThrowArgumentNull(buildParameters);
 
             ProjectRootElement xml = ProjectRootElement.OpenProjectOrSolution(projectFile, globalProperties, toolsVersion, buildParameters.ProjectRootElementCache, false /*Not explicitly loaded*/);
 
@@ -628,9 +659,9 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal ProjectInstance(ProjectRootElement xml, IDictionary<string, string> globalProperties, string toolsVersion, BuildParameters buildParameters, ILoggingService loggingService, BuildEventContext buildEventContext, ISdkResolverService sdkResolverService, int submissionId)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(xml, nameof(xml));
+            ErrorUtilities.VerifyThrowArgumentNull(xml);
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(toolsVersion, nameof(toolsVersion));
-            ErrorUtilities.VerifyThrowArgumentNull(buildParameters, nameof(buildParameters));
+            ErrorUtilities.VerifyThrowArgumentNull(buildParameters);
             Initialize(xml, globalProperties, toolsVersion, null, 0 /* no solution version specified */, buildParameters, loggingService, buildEventContext, sdkResolverService, submissionId);
         }
 
@@ -640,7 +671,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         internal ProjectInstance(Evaluation.Project.Data data, string directory, string fullPath, HostServices hostServices, PropertyDictionary<ProjectPropertyInstance> environmentVariableProperties, ProjectInstanceSettings settings)
         {
-            ErrorUtilities.VerifyThrowInternalNull(data, nameof(data));
+            ErrorUtilities.VerifyThrowInternalNull(data);
             ErrorUtilities.VerifyThrowInternalLength(directory, nameof(directory));
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(fullPath, nameof(fullPath));
 
@@ -661,6 +692,7 @@ namespace Microsoft.Build.Execution
             this.CreateEvaluatedIncludeSnapshotIfRequested(keepEvaluationCache, new ReadOnlyCollection<ProjectItem>(data.Items), projectItemToInstanceMap);
             this.CreateGlobalPropertiesSnapshot(data.GlobalPropertiesDictionary);
             this.CreateEnvironmentVariablePropertiesSnapshot(environmentVariableProperties);
+            this.CreateSdkResolvedEnvironmentVariablePropertiesSnapshot(data.SdkResolvedEnvironmentVariablePropertiesDictionary);
             this.CreateTargetsSnapshot(data.Targets, data.DefaultTargets, data.InitialTargets, data.BeforeTargets, data.AfterTargets);
             this.CreateImportsSnapshot(data.ImportClosure, data.ImportClosureWithDuplicates);
 
@@ -679,6 +711,16 @@ namespace Microsoft.Build.Execution
             _explicitToolsVersionSpecified = data.ExplicitToolsVersion != null;
 
             _isImmutable = immutable;
+        }
+
+        private void CreateSdkResolvedEnvironmentVariablePropertiesSnapshot(PropertyDictionary<ProjectPropertyInstance> sdkResolvedEnvironmentVariablePropertiesDictionary)
+        {
+            _sdkResolvedEnvironmentVariableProperties = new PropertyDictionary<ProjectPropertyInstance>(sdkResolvedEnvironmentVariablePropertiesDictionary.Count);
+
+            foreach (ProjectPropertyInstance environmentProperty in sdkResolvedEnvironmentVariablePropertiesDictionary)
+            {
+                _sdkResolvedEnvironmentVariableProperties.Set(environmentProperty.DeepClone());
+            }
         }
 
         /// <summary>
@@ -737,6 +779,16 @@ namespace Microsoft.Build.Execution
                     _environmentVariableProperties.Set(environmentProperty.DeepClone(_isImmutable));
                 }
 
+                if (that._sdkResolvedEnvironmentVariableProperties is PropertyDictionary<ProjectPropertyInstance> thatEnvProps)
+                {
+                    _sdkResolvedEnvironmentVariableProperties = new(thatEnvProps.Count);
+
+                    foreach (ProjectPropertyInstance sdkResolvedEnvironmentVariable in thatEnvProps)
+                    {
+                        _sdkResolvedEnvironmentVariableProperties.Set(sdkResolvedEnvironmentVariable.DeepClone(_isImmutable));
+                    }
+                }
+
                 this.DefaultTargets = new List<string>(that.DefaultTargets);
                 this.InitialTargets = new List<string>(that.InitialTargets);
                 ((IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance,
@@ -775,6 +827,8 @@ namespace Microsoft.Build.Execution
                     _globalProperties = new PropertyDictionary<ProjectPropertyInstance>(filter.PropertyFilters.Count);
                     _environmentVariableProperties =
                         new PropertyDictionary<ProjectPropertyInstance>(filter.PropertyFilters.Count);
+                    _sdkResolvedEnvironmentVariableProperties =
+                        new PropertyDictionary<ProjectPropertyInstance>(filter.PropertyFilters.Count);
 
                     // Filter each type of property.
                     foreach (var desiredProperty in filter.PropertyFilters)
@@ -791,10 +845,15 @@ namespace Microsoft.Build.Execution
                             _globalProperties.Set(globalProperty.DeepClone(isImmutable: true));
                         }
 
-                        var environmentProperty = that.GetProperty(desiredProperty);
+                        var environmentProperty = that._environmentVariableProperties?.GetProperty(desiredProperty);
                         if (environmentProperty != null)
                         {
                             _environmentVariableProperties.Set(environmentProperty.DeepClone(isImmutable: true));
+                        }
+                        var sdkResolvedEnvironmentProperty = that._sdkResolvedEnvironmentVariableProperties?.GetProperty(desiredProperty);
+                        if (sdkResolvedEnvironmentProperty != null)
+                        {
+                            _sdkResolvedEnvironmentVariableProperties.Set(sdkResolvedEnvironmentProperty.DeepClone(isImmutable: true));
                         }
                     }
                 }
@@ -827,7 +886,7 @@ namespace Microsoft.Build.Execution
                                 // any extant metadata.
                                 // UNDONE: This could be achieved at lower GC cost by applying
                                 // the metadata filter at DeepClone time above.
-                                foreach (var metadataName in filteredItem.MetadataNames)
+                                foreach (var metadataName in filteredItem.EnumerableMetadataNames)
                                 {
                                     if (!itemFilter.Value.Contains(metadataName, StringComparer.OrdinalIgnoreCase))
                                     {
@@ -970,33 +1029,18 @@ namespace Microsoft.Build.Execution
                 result = instanceProvider.ImmutableInstance;
                 if (result == null)
                 {
-                    IDictionary<string, ProjectMetadataInstance> metadata = null;
+                    ImmutableDictionary<string, string> metadata = null;
                     if (projectItemDefinition.Metadata is IDictionary<string, ProjectMetadata> linkedMetadataDict)
                     {
-                        metadata = new ImmutableElementCollectionConverter<ProjectMetadata, ProjectMetadataInstance>(
-                                        linkedMetadataDict,
-                                        constrainedProjectElements: null,
-                                        ConvertCachedProjectMetadataToInstance);
+                        IEnumerable<KeyValuePair<string, string>> projectMetadataInstances = linkedMetadataDict.Select(directMetadatum
+                            => new KeyValuePair<string, string>(directMetadatum.Key, directMetadatum.Value.EvaluatedValueEscaped));
+
+                        metadata = ImmutableDictionaryExtensions.EmptyMetadata
+                            .SetItems(projectMetadataInstances, ProjectMetadataInstance.VerifyThrowReservedName);
                     }
 
                     result = instanceProvider.GetOrSetImmutableInstance(
                         new ProjectItemDefinitionInstance(projectItemDefinition.ItemType, metadata));
-                }
-            }
-
-            return result;
-        }
-
-        private static ProjectMetadataInstance ConvertCachedProjectMetadataToInstance(ProjectMetadata projectMetadata)
-        {
-            ProjectMetadataInstance result = null;
-
-            if (projectMetadata is IImmutableInstanceProvider<ProjectMetadataInstance> instanceProvider)
-            {
-                result = instanceProvider.ImmutableInstance;
-                if (result == null)
-                {
-                    result = instanceProvider.GetOrSetImmutableInstance(new ProjectMetadataInstance(projectMetadata));
                 }
             }
 
@@ -1011,7 +1055,8 @@ namespace Microsoft.Build.Execution
                 out IDictionary<string, ProjectProperty> elementsDictionary,
                 out IDictionary<(string, int, int), ProjectProperty> constrainedElementsDictionary);
 
-            var hashSet = new ImmutableValuedElementCollectionConverter<ProjectProperty, ProjectPropertyInstance>(
+            var hashSet = new ImmutableProjectPropertyCollectionConverter(
+                                linkedProject,
                                 elementsDictionary,
                                 constrainedElementsDictionary,
                                 ConvertCachedPropertyToInstance);
@@ -1077,14 +1122,7 @@ namespace Microsoft.Build.Execution
                     return ReadOnlyEmptyDictionary<string, string>.Instance;
                 }
 
-                Dictionary<string, string> dictionary = new Dictionary<string, string>(_globalProperties.Count, MSBuildNameIgnoreCaseComparer.Default);
-
-                foreach (ProjectPropertyInstance property in _globalProperties)
-                {
-                    dictionary[property.Name] = ((IProperty)property).EvaluatedValueEscaped;
-                }
-
-                return new ObjectModel.ReadOnlyDictionary<string, string>(dictionary);
+                return _globalProperties.ToReadOnlyDictionary();
             }
         }
 
@@ -1340,6 +1378,42 @@ namespace Microsoft.Build.Execution
         PropertyDictionary<ProjectPropertyInstance> IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>.EnvironmentVariablePropertiesDictionary
         {
             get => _environmentVariableProperties;
+        }
+
+        PropertyDictionary<ProjectPropertyInstance> IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>.SdkResolvedEnvironmentVariablePropertiesDictionary
+        {
+            get => _sdkResolvedEnvironmentVariableProperties;
+        }
+
+        public void AddSdkResolvedEnvironmentVariable(string name, string value)
+        {
+            // If the property has already been set as an environment variable, we do not overwrite it.
+            if (_environmentVariableProperties.Contains(name))
+            {
+                _loggingContext.LogComment(MessageImportance.Low, "SdkEnvironmentVariableAlreadySet", name, value);
+                return;
+            }
+            // If another SDK already set it, we do not overwrite it.
+            else if (_sdkResolvedEnvironmentVariableProperties?.Contains(name) == true)
+            {
+                _loggingContext.LogComment(MessageImportance.Low, "SdkEnvironmentVariableAlreadySetBySdk", name, value);
+                return;
+            }
+
+            _sdkResolvedEnvironmentVariableProperties ??= new();
+
+            ProjectPropertyInstance.SdkResolvedEnvironmentVariablePropertyInstance property = new(name, value);
+
+            _sdkResolvedEnvironmentVariableProperties.Set(property);
+
+            // Only set the local property if it does not already exist, prioritizing regular properties defined in XML.
+            if (GetProperty(name) is null)
+            {
+                ((IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>)this)
+                   .SetProperty(name, value, isGlobalProperty: false, mayBeReserved: false, loggingContext: _loggingContext, isEnvironmentVariable: true, isCommandLineProperty: false);
+            }
+
+            _loggingContext.LogComment(MessageImportance.Low, "SdkEnvironmentVariableSet", name, value);
         }
 
         /// <summary>
@@ -1609,7 +1683,7 @@ namespace Microsoft.Build.Execution
         [SuppressMessage("Microsoft.Design", "CA1011:ConsiderPassingBaseTypesAsParameters", Justification = "IItem is an internal interface; this is less confusing to outside customers. ")]
         public static string GetEvaluatedItemIncludeEscaped(ProjectItemInstance item)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(item, nameof(item));
+            ErrorUtilities.VerifyThrowArgumentNull(item);
 
             return ((IItem)item).EvaluatedIncludeEscaped;
         }
@@ -1619,7 +1693,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public static string GetEvaluatedItemIncludeEscaped(ProjectItemDefinitionInstance item)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(item, nameof(item));
+            ErrorUtilities.VerifyThrowArgumentNull(item);
 
             return ((IItem)item).EvaluatedIncludeEscaped;
         }
@@ -1629,7 +1703,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public static string GetMetadataValueEscaped(ProjectMetadataInstance metadatum)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(metadatum, nameof(metadatum));
+            ErrorUtilities.VerifyThrowArgumentNull(metadatum);
 
             return metadatum.EvaluatedValueEscaped;
         }
@@ -1640,7 +1714,7 @@ namespace Microsoft.Build.Execution
         [SuppressMessage("Microsoft.Design", "CA1011:ConsiderPassingBaseTypesAsParameters", Justification = "IItem is an internal interface; this is less confusing to outside customers. ")]
         public static string GetMetadataValueEscaped(ProjectItemInstance item, string name)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(item, nameof(item));
+            ErrorUtilities.VerifyThrowArgumentNull(item);
 
             return ((IItem)item).GetMetadataValueEscaped(name);
         }
@@ -1650,7 +1724,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public static string GetMetadataValueEscaped(ProjectItemDefinitionInstance item, string name)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(item, nameof(item));
+            ErrorUtilities.VerifyThrowArgumentNull(item);
 
             return ((IItem)item).GetMetadataValueEscaped(name);
         }
@@ -1661,7 +1735,7 @@ namespace Microsoft.Build.Execution
         [SuppressMessage("Microsoft.Design", "CA1011:ConsiderPassingBaseTypesAsParameters", Justification = "IProperty is an internal interface; this is less confusing to outside customers. ")]
         public static string GetPropertyValueEscaped(ProjectPropertyInstance property)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(property, nameof(property));
+            ErrorUtilities.VerifyThrowArgumentNull(property);
 
             return ((IProperty)property).EvaluatedValueEscaped;
         }
@@ -1791,7 +1865,7 @@ namespace Microsoft.Build.Execution
         /// immutable if we are immutable.
         /// Only called during evaluation, so does not check for immutability.
         /// </summary>
-        ProjectPropertyInstance IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>.SetProperty(string name, string evaluatedValueEscaped, bool isGlobalProperty, bool mayBeReserved, LoggingContext loggingContext, bool isEnvironmentVariable)
+        ProjectPropertyInstance IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>.SetProperty(string name, string evaluatedValueEscaped, bool isGlobalProperty, bool mayBeReserved, LoggingContext loggingContext, bool isEnvironmentVariable, bool isCommandLineProperty)
         {
             // Mutability not verified as this is being populated during evaluation
             ProjectPropertyInstance property = ProjectPropertyInstance.Create(name, evaluatedValueEscaped, mayBeReserved, _isImmutable, isEnvironmentVariable, loggingContext);
@@ -1843,6 +1917,13 @@ namespace Microsoft.Build.Execution
             SdkResult sdkResult)
         {
             _importPaths.Add(import.FullPath);
+            if (sdkResult?.EnvironmentVariablesToAdd is IDictionary<string, string> sdkEnvironmentVariablesToAdd && sdkEnvironmentVariablesToAdd.Count > 0)
+            {
+                foreach (var environmentVariable in sdkEnvironmentVariablesToAdd)
+                {
+                    _sdkResolvedEnvironmentVariableProperties.Set(ProjectPropertyInstance.Create(environmentVariable.Key, environmentVariable.Value, importElement.Location, isImmutable: true));
+                }
+            }
             ((IEvaluatorData<ProjectPropertyInstance, ProjectItemInstance, ProjectMetadataInstance, ProjectItemDefinitionInstance>)this).RecordImportWithDuplicates(importElement, import, versionEvaluated);
         }
 
@@ -2306,7 +2387,9 @@ namespace Microsoft.Build.Execution
                     // Only emit the property if it does not exist in the global or environment properties dictionaries or differs from them.
                     if (!_globalProperties.Contains(property.Name) || !String.Equals(_globalProperties[property.Name].EvaluatedValue, property.EvaluatedValue, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!_environmentVariableProperties.Contains(property.Name) || !String.Equals(_environmentVariableProperties[property.Name].EvaluatedValue, property.EvaluatedValue, StringComparison.OrdinalIgnoreCase))
+                        if ((!_environmentVariableProperties.Contains(property.Name) || !String.Equals(_environmentVariableProperties[property.Name].EvaluatedValue, property.EvaluatedValue, StringComparison.OrdinalIgnoreCase))
+                            && _sdkResolvedEnvironmentVariableProperties is not null
+                            && (!_sdkResolvedEnvironmentVariableProperties.Contains(property.Name) || !String.Equals(_sdkResolvedEnvironmentVariableProperties[property.Name].EvaluatedValue, property.EvaluatedValue, StringComparison.OrdinalIgnoreCase)))
                         {
                             property.ToProjectPropertyElement(propertyGroupElement);
                         }
@@ -2537,10 +2620,10 @@ namespace Microsoft.Build.Execution
             ISdkResolverService sdkResolverService,
             int submissionId)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(projectFile, nameof(projectFile));
-            ErrorUtilities.VerifyThrowArgumentNull(globalPropertiesInstances, nameof(globalPropertiesInstances));
+            ErrorUtilities.VerifyThrowArgumentLength(projectFile);
+            ErrorUtilities.VerifyThrowArgumentNull(globalPropertiesInstances);
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(toolsVersion, nameof(toolsVersion));
-            ErrorUtilities.VerifyThrowArgumentNull(buildParameters, nameof(buildParameters));
+            ErrorUtilities.VerifyThrowArgumentNull(buildParameters);
             ErrorUtilities.VerifyThrow(FileUtilities.IsSolutionFilename(projectFile), "Project file {0} is not a solution.", projectFile);
 
             ProjectInstance[] projectInstances = null;
@@ -2574,45 +2657,87 @@ namespace Microsoft.Build.Execution
             // we should be generating a 4.0+ or a 3.5-style wrapper project based on the version of the solution.
             else
             {
-                string solutionFile = projectFile;
-                if (FileUtilities.IsSolutionFilterFilename(projectFile))
-                {
-                    solutionFile = SolutionFile.ParseSolutionFromSolutionFilter(projectFile, out _);
-                }
-                SolutionFile.GetSolutionFileAndVisualStudioMajorVersions(solutionFile, out int solutionVersion, out int visualStudioVersion);
+                projectInstances = CalculateToolsVersionAndGenerateSolutionWrapper(
+                    projectFile,
+                    buildParameters,
+                    loggingService,
+                    projectBuildEventContext,
+                    globalProperties,
+                    isExplicitlyLoaded,
+                    targetNames,
+                    sdkResolverService,
+                    submissionId);
+            }
 
-                // If we get to this point, it's because it's a valid version.  Map the solution version
-                // to the equivalent MSBuild ToolsVersion, and unless it's Dev10 or newer, spawn the old
-                // engine to generate the solution wrapper.
-                if (solutionVersion <= 9) /* Whidbey or before */
-                {
-                    loggingService.LogComment(projectBuildEventContext, MessageImportance.Low, "OldWrapperGeneratedOldSolutionVersion", "2.0", solutionVersion);
-                    projectInstances = GenerateSolutionWrapperUsingOldOM(projectFile, globalProperties, "2.0", buildParameters.ProjectRootElementCache, buildParameters, loggingService, projectBuildEventContext, isExplicitlyLoaded, sdkResolverService, submissionId);
-                }
-                else if (solutionVersion == 10) /* Orcas */
-                {
-                    loggingService.LogComment(projectBuildEventContext, MessageImportance.Low, "OldWrapperGeneratedOldSolutionVersion", "3.5", solutionVersion);
-                    projectInstances = GenerateSolutionWrapperUsingOldOM(projectFile, globalProperties, "3.5", buildParameters.ProjectRootElementCache, buildParameters, loggingService, projectBuildEventContext, isExplicitlyLoaded, sdkResolverService, submissionId);
-                }
-                else
-                {
-                    if ((solutionVersion == 11) || (solutionVersion == 12 && visualStudioVersion == 0)) /* Dev 10 and Dev 11 */
-                    {
-                        toolsVersion = "4.0";
-                    }
-                    else /* Dev 12 and above */
-                    {
-                        toolsVersion = visualStudioVersion.ToString(CultureInfo.InvariantCulture) + ".0";
-                    }
+            return projectInstances;
+        }
 
-                    string toolsVersionToUse = Utilities.GenerateToolsVersionToUse(
-                        explicitToolsVersion: null,
-                        toolsVersionFromProject: FileUtilities.IsSolutionFilterFilename(projectFile) ? "Current" : toolsVersion,
-                        getToolset: buildParameters.GetToolset,
-                        defaultToolsVersion: Constants.defaultSolutionWrapperProjectToolsVersion,
-                        usingDifferentToolsVersionFromProjectFile: out _);
-                    projectInstances = GenerateSolutionWrapper(projectFile, globalProperties, toolsVersionToUse, loggingService, projectBuildEventContext, targetNames, sdkResolverService, submissionId);
+        private static ProjectInstance[] CalculateToolsVersionAndGenerateSolutionWrapper(
+            string projectFile,
+            BuildParameters buildParameters,
+            ILoggingService loggingService,
+            BuildEventContext projectBuildEventContext,
+            Dictionary<string, string> globalProperties,
+            bool isExplicitlyLoaded,
+            IReadOnlyCollection<string> targetNames,
+            ISdkResolverService sdkResolverService,
+            int submissionId)
+        {
+            string solutionFileName = projectFile;
+
+            if (FileUtilities.IsSolutionFilterFilename(projectFile))
+            {
+                solutionFileName = SolutionFile.ParseSolutionFromSolutionFilter(projectFile, out _);
+            }
+
+            if (SolutionFile.ShouldUseNewParser(solutionFileName))
+            {
+                // For the new parser we use Current tools version.
+                return GenerateSolutionWrapper(projectFile, globalProperties, "Current", loggingService, projectBuildEventContext, targetNames, sdkResolverService, submissionId);
+            }
+
+            // For the old parser we try to make a best-effort guess based on the version of the solution.
+            string toolsVersion = null;
+            ProjectInstance[] projectInstances = null;
+
+            SolutionFile.GetSolutionFileAndVisualStudioMajorVersions(solutionFileName, out int solutionVersion, out int visualStudioVersion);
+
+            // If we get to this point, it's because it's a valid version.  Map the solution version
+            // to the equivalent MSBuild ToolsVersion, and unless it's Dev10 or newer, spawn the old
+            // engine to generate the solution wrapper.
+            if (solutionVersion <= 9) /* Whidbey or before */
+            {
+                loggingService.LogComment(projectBuildEventContext, MessageImportance.Low, "OldWrapperGeneratedOldSolutionVersion", "2.0", solutionVersion);
+                projectInstances = GenerateSolutionWrapperUsingOldOM(projectFile, globalProperties, "2.0", buildParameters.ProjectRootElementCache, buildParameters, loggingService, projectBuildEventContext, isExplicitlyLoaded, sdkResolverService, submissionId);
+            }
+            else if (solutionVersion == 10) /* Orcas */
+            {
+                loggingService.LogComment(projectBuildEventContext, MessageImportance.Low, "OldWrapperGeneratedOldSolutionVersion", "3.5", solutionVersion);
+                projectInstances = GenerateSolutionWrapperUsingOldOM(projectFile, globalProperties, "3.5", buildParameters.ProjectRootElementCache, buildParameters, loggingService, projectBuildEventContext, isExplicitlyLoaded, sdkResolverService, submissionId);
+            }
+            else
+            {
+                if ((solutionVersion == 11) || (solutionVersion == 12 && visualStudioVersion == 0)) /* Dev 10 and Dev 11 */
+                {
+                    toolsVersion = "4.0";
                 }
+                else /* Dev 12 and above */
+                {
+                    toolsVersion =
+#if NET
+                        string.Create(CultureInfo.InvariantCulture, $"{visualStudioVersion}.0");
+#else
+                        $"{visualStudioVersion.ToString(CultureInfo.InvariantCulture)}.0";
+#endif
+                }
+
+                string toolsVersionToUse = Utilities.GenerateToolsVersionToUse(
+                    explicitToolsVersion: null,
+                    toolsVersionFromProject: FileUtilities.IsSolutionFilterFilename(projectFile) ? "Current" : toolsVersion,
+                    getToolset: buildParameters.GetToolset,
+                    defaultToolsVersion: Constants.defaultSolutionWrapperProjectToolsVersion,
+                    usingDifferentToolsVersionFromProjectFile: out _);
+                projectInstances = GenerateSolutionWrapper(projectFile, globalProperties, toolsVersionToUse, loggingService, projectBuildEventContext, targetNames, sdkResolverService, submissionId);
             }
 
             return projectInstances;
@@ -2668,6 +2793,11 @@ namespace Microsoft.Build.Execution
                     parameters.LogTaskInputs ||
                     loggers.Any(logger => logger.Verbosity == LoggerVerbosity.Diagnostic) ||
                     loggingService?.IncludeTaskInputs == true;
+
+                parameters.EnableTargetOutputLogging =
+                    parameters.EnableTargetOutputLogging ||
+                    loggers.Any(logger => logger.Verbosity == LoggerVerbosity.Diagnostic) ||
+                    loggingService?.EnableTargetOutputLogging == true;
             }
 
             if (remoteLoggers != null)
@@ -3044,9 +3174,9 @@ namespace Microsoft.Build.Execution
             EvaluationContext evaluationContext = null,
             IDirectoryCacheFactory directoryCacheFactory = null)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(xml, nameof(xml));
+            ErrorUtilities.VerifyThrowArgumentNull(xml);
             ErrorUtilities.VerifyThrowArgumentLengthIfNotNull(explicitToolsVersion, "toolsVersion");
-            ErrorUtilities.VerifyThrowArgumentNull(buildParameters, nameof(buildParameters));
+            ErrorUtilities.VerifyThrowArgumentNull(buildParameters);
 
             _directory = xml.DirectoryPath;
             _projectFileLocation = xml.ProjectFileLocation ?? ElementLocation.EmptyLocation;
@@ -3124,7 +3254,7 @@ namespace Microsoft.Build.Execution
 
             if (Traits.Instance.EscapeHatches.DebugEvaluation)
             {
-                Trace.WriteLine(String.Format(CultureInfo.InvariantCulture, "MSBUILD: Creating a ProjectInstance from an unevaluated state [{0}]", FullPath));
+                Trace.WriteLine($"MSBUILD: Creating a ProjectInstance from an unevaluated state [{FullPath}]");
             }
 
             ErrorUtilities.VerifyThrow(EvaluationId == BuildEventContext.InvalidEvaluationId, "Evaluation ID is invalid prior to evaluation");
@@ -3138,6 +3268,7 @@ namespace Microsoft.Build.Execution
                 projectLoadSettings ?? buildParameters.ProjectLoadSettings, /* Use override ProjectLoadSettings if specified */
                 buildParameters.MaxNodeCount,
                 buildParameters.EnvironmentPropertiesInternal,
+                buildParameters.PropertiesFromCommandLine,
                 loggingService,
                 new ProjectItemInstanceFactory(this),
                 buildParameters.ToolsetProvider,
@@ -3299,13 +3430,14 @@ namespace Microsoft.Build.Execution
                 }
             }
 
-            CopyOnWritePropertyDictionary<ProjectMetadataInstance> directMetadata = null;
+            ImmutableDictionary<string, string> directMetadata = null;
             if (item.DirectMetadata != null)
             {
-                directMetadata = new CopyOnWritePropertyDictionary<ProjectMetadataInstance>();
+                IEnumerable<KeyValuePair<string, string>> projectMetadataInstances = item.DirectMetadata.Select(directMetadatum
+                    => new KeyValuePair<string, string>(directMetadatum.Name, directMetadatum.EvaluatedValueEscaped));
 
-                IEnumerable<ProjectMetadataInstance> projectMetadataInstances = item.DirectMetadata.Select(directMetadatum => new ProjectMetadataInstance(directMetadatum));
-                directMetadata.ImportProperties(projectMetadataInstances);
+                directMetadata = ImmutableDictionaryExtensions.EmptyMetadata
+                    .SetItems(projectMetadataInstances, ProjectMetadataInstance.VerifyThrowReservedName);
             }
 
             GetEvaluatedIncludesFromProjectItem(
@@ -3351,19 +3483,20 @@ namespace Microsoft.Build.Execution
                     itemTypeDefinition,
                     ConvertCachedItemDefinitionToInstance);
 
-            ICopyOnWritePropertyDictionary<ProjectMetadataInstance> directMetadata = null;
+            IReadOnlyDictionary<string, string> directMetadata = null;
             if (item.DirectMetadata is not null)
             {
                 if (item.DirectMetadata is IDictionary<string, ProjectMetadata> metadataDict)
                 {
-                    directMetadata = new ImmutablePropertyCollectionConverter<ProjectMetadata, ProjectMetadataInstance>(metadataDict, ConvertCachedProjectMetadataToInstance);
+                    directMetadata = new ImmutableProjectMetadataCollectionConverter(item, metadataDict);
                 }
                 else
                 {
-                    directMetadata = new CopyOnWritePropertyDictionary<ProjectMetadataInstance>();
+                    IEnumerable<KeyValuePair<string, string>> projectMetadataInstances = item.DirectMetadata.Select(directMetadatum
+                        => new KeyValuePair<string, string>(directMetadatum.Name, directMetadatum.EvaluatedValueEscaped));
 
-                    IEnumerable<ProjectMetadataInstance> projectMetadataInstances = item.DirectMetadata.Select(directMetadatum => new ProjectMetadataInstance(directMetadatum));
-                    directMetadata.ImportProperties(projectMetadataInstances);
+                    directMetadata = ImmutableDictionaryExtensions.EmptyMetadata
+                        .SetItems(projectMetadataInstances, ProjectMetadataInstance.VerifyThrowReservedName);
                 }
             }
 
@@ -3382,11 +3515,6 @@ namespace Microsoft.Build.Execution
                 item.Xml.ContainingProject.EscapedFullPath,
                 useItemDefinitionsWithoutModification: true);
             return instance;
-        }
-
-        private static string GetImportFullPath(ResolvedImport import)
-        {
-            return import.ImportedProject.FullPath;
         }
 
         /// <summary>

@@ -4,11 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Build.Experimental.BuildCheck;
 using Microsoft.Build.Experimental.BuildCheck.Acquisition;
-using Microsoft.Build.Experimental.BuildCheck.Utilities;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 
@@ -32,24 +28,25 @@ internal class BuildCheckBuildEventHandler
 
         _eventHandlersFull = new()
         {
-            { typeof(BuildSubmissionStartedEventArgs), (BuildEventArgs e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
-            { typeof(ProjectEvaluationFinishedEventArgs), (BuildEventArgs e) => HandleProjectEvaluationFinishedEvent((ProjectEvaluationFinishedEventArgs)e) },
-            { typeof(ProjectEvaluationStartedEventArgs), (BuildEventArgs e) => HandleProjectEvaluationStartedEvent((ProjectEvaluationStartedEventArgs)e) },
-            { typeof(EnvironmentVariableReadEventArgs), (BuildEventArgs e) => HandleEnvironmentVariableReadEvent((EnvironmentVariableReadEventArgs)e) },
-            { typeof(ProjectStartedEventArgs), (BuildEventArgs e) => HandleProjectStartedRequest((ProjectStartedEventArgs)e) },
-            { typeof(ProjectFinishedEventArgs), (BuildEventArgs e) => HandleProjectFinishedRequest((ProjectFinishedEventArgs)e) },
-            { typeof(BuildCheckTracingEventArgs), (BuildEventArgs e) => HandleBuildCheckTracingEvent((BuildCheckTracingEventArgs)e) },
-            { typeof(BuildCheckAcquisitionEventArgs), (BuildEventArgs e) => HandleBuildCheckAcquisitionEvent((BuildCheckAcquisitionEventArgs)e) },
-            { typeof(TaskStartedEventArgs), (BuildEventArgs e) => HandleTaskStartedEvent((TaskStartedEventArgs)e) },
-            { typeof(TaskFinishedEventArgs), (BuildEventArgs e) => HandleTaskFinishedEvent((TaskFinishedEventArgs)e) },
-            { typeof(TaskParameterEventArgs), (BuildEventArgs e) => HandleTaskParameterEvent((TaskParameterEventArgs)e) },
-            { typeof(BuildFinishedEventArgs), (BuildEventArgs e) => HandleBuildFinishedEvent((BuildFinishedEventArgs)e) },
+            { typeof(BuildSubmissionStartedEventArgs), (e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
+            { typeof(ProjectEvaluationFinishedEventArgs), (e) => HandleProjectEvaluationFinishedEvent((ProjectEvaluationFinishedEventArgs)e) },
+            { typeof(ProjectEvaluationStartedEventArgs), (e) => HandleProjectEvaluationStartedEvent((ProjectEvaluationStartedEventArgs)e) },
+            { typeof(EnvironmentVariableReadEventArgs), (e) => HandleEnvironmentVariableReadEvent((EnvironmentVariableReadEventArgs)e) },
+            { typeof(ProjectStartedEventArgs), (e) => HandleProjectStartedRequest((ProjectStartedEventArgs)e) },
+            { typeof(ProjectFinishedEventArgs), (e) => HandleProjectFinishedRequest((ProjectFinishedEventArgs)e) },
+            { typeof(BuildCheckTracingEventArgs), (e) => HandleBuildCheckTracingEvent((BuildCheckTracingEventArgs)e) },
+            { typeof(BuildCheckAcquisitionEventArgs), (e) => HandleBuildCheckAcquisitionEvent((BuildCheckAcquisitionEventArgs)e) },
+            { typeof(TaskStartedEventArgs), (e) => HandleTaskStartedEvent((TaskStartedEventArgs)e) },
+            { typeof(TaskFinishedEventArgs), (e) => HandleTaskFinishedEvent((TaskFinishedEventArgs)e) },
+            { typeof(TaskParameterEventArgs), (e) => HandleTaskParameterEvent((TaskParameterEventArgs)e) },
+            { typeof(BuildFinishedEventArgs), (e) => HandleBuildFinishedEvent((BuildFinishedEventArgs)e) },
+            { typeof(ProjectImportedEventArgs), (e) => HandleProjectImportedEvent((ProjectImportedEventArgs)e) },
         };
 
         // During restore we'll wait only for restore to be done.
         _eventHandlersRestore = new()
         {
-            { typeof(BuildSubmissionStartedEventArgs), (BuildEventArgs e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
+            { typeof(BuildSubmissionStartedEventArgs), (e) => HandleBuildSubmissionStartedEvent((BuildSubmissionStartedEventArgs)e) },
         };
 
         _eventHandlers = _eventHandlersFull;
@@ -92,7 +89,9 @@ internal class BuildCheckBuildEventHandler
                 BuildCheckDataSource.EventArgs,
                 checkContext,
                 eventArgs.ProjectFile!);
+
             _buildCheckManager.ProcessProjectEvaluationStarted(
+                BuildCheckDataSource.EventArgs,
                 checkContext,
                 eventArgs.ProjectFile!);
         }
@@ -141,6 +140,11 @@ internal class BuildCheckBuildEventHandler
                 _checkContextFactory.CreateCheckContext(GetBuildEventContext(eventArgs)),
                 eventArgs);
 
+    private void HandleProjectImportedEvent(ProjectImportedEventArgs eventArgs)
+        => _buildCheckManager.ProcessProjectImportedEventArgs(
+                _checkContextFactory.CreateCheckContext(GetBuildEventContext(eventArgs)),
+                eventArgs);
+
     private bool IsMetaProjFile(string? projectFile) => projectFile?.EndsWith(".metaproj", StringComparison.OrdinalIgnoreCase) == true;
 
     private readonly BuildCheckTracingData _tracingData = new BuildCheckTracingData();
@@ -156,7 +160,7 @@ internal class BuildCheckBuildEventHandler
 
     private void LogCheckStats(ICheckContext checkContext)
     {
-        Dictionary<string, TimeSpan>  infraStats = _tracingData.InfrastructureTracingData;
+        Dictionary<string, TimeSpan> infraStats = _tracingData.InfrastructureTracingData;
         // Stats are per rule, while runtime is per check - and check can have multiple rules.
         // In case of multi-rule check, the runtime stats are duplicated for each rule.
         Dictionary<string, TimeSpan> checkStats = _tracingData.ExtractCheckStats();

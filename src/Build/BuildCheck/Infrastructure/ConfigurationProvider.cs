@@ -2,13 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Build.Experimental.BuildCheck.Infrastructure.EditorConfig;
-using Microsoft.Build.Experimental.BuildCheck;
-using System.Collections.Concurrent;
-using Microsoft.Build.Experimental.BuildCheck.Utilities;
 using Microsoft.Build.BuildCheck.Infrastructure;
+using Microsoft.Build.Experimental.BuildCheck.Infrastructure.EditorConfig;
+using Microsoft.Build.Experimental.BuildCheck.Utilities;
 
 namespace Microsoft.Build.Experimental.BuildCheck.Infrastructure;
 
@@ -207,7 +206,7 @@ internal sealed class ConfigurationProvider : IConfigurationProvider
             Dictionary<string, string> filteredData = FilterDictionaryByKeys($"{BuildCheck_ConfigurationKey}.", config);
             return filteredData;
         });
-        
+
         return editorConfigRules;
     }
 

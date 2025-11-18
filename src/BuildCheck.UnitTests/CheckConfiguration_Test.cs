@@ -2,8 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Collections.Generic;
-using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
 using Microsoft.Build.Experimental.BuildCheck;
+using Microsoft.Build.Experimental.BuildCheck.Infrastructure;
 using Shouldly;
 using Xunit;
 
@@ -68,7 +68,7 @@ public class CheckConfiguration_Test
         {
             { "severity", parameter },
         };
-        
+
         var buildConfig = CheckConfiguration.Create(config);
 
         buildConfig.IsEnabled.ShouldBe(expected);

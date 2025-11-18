@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -62,7 +61,7 @@ namespace Microsoft.Build.Framework
             }
 
             writer.Write(EntryProjectsFullPath.Count());
-            foreach(var entry in EntryProjectsFullPath)
+            foreach (var entry in EntryProjectsFullPath)
             {
                 writer.Write((string)entry);
             }

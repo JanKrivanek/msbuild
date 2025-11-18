@@ -1,4 +1,4 @@
-﻿// Licensed to the .NET Foundation under one or more agreements.
+// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
@@ -70,7 +70,7 @@ namespace Microsoft.Build.BackEnd
         internal static Handshake GetHandshake(bool enableNodeReuse, bool enableLowPriority)
         {
             CommunicationsUtilities.Trace("MSBUILDNODEHANDSHAKESALT=\"{0}\", msbuildDirectory=\"{1}\", enableNodeReuse={2}, enableLowPriority={3}", Traits.MSBuildNodeHandshakeSalt, BuildEnvironmentHelper.Instance.MSBuildToolsDirectory32, enableNodeReuse, enableLowPriority);
-            return new Handshake(CommunicationsUtilities.GetHandshakeOptions(taskHost: false, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture(), nodeReuse: enableNodeReuse, lowPriority: enableLowPriority));
+            return new Handshake(CommunicationsUtilities.GetHandshakeOptions(taskHost: false, taskHostParameters: TaskHostParameters.Empty, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture(), nodeReuse: enableNodeReuse, lowPriority: enableLowPriority));
         }
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         public IList<NodeInfo> CreateNodes(int nextNodeId, INodePacketFactory factory, Func<NodeInfo, NodeConfiguration> configurationFactory, int numberOfNodesToCreate)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(factory, nameof(factory));
+            ErrorUtilities.VerifyThrowArgumentNull(factory);
 
             // This can run concurrently. To be properly detect internal bug when we create more nodes than allowed
             //   we add into _nodeContexts premise of future node and verify that it will not cross limits.
@@ -94,11 +94,11 @@ namespace Microsoft.Build.BackEnd
             // want to start up just a standard MSBuild out-of-proc node.
             // Note: We need to always pass /nodeReuse to ensure the value for /nodeReuse from msbuild.rsp
             // (next to msbuild.exe) is ignored.
-            string commandLineArgs = $"/nologo /nodemode:1 /nodeReuse:{ComponentHost.BuildParameters.EnableNodeReuse.ToString().ToLower()} /low:{ComponentHost.BuildParameters.LowPriority.ToString().ToLower()}";
+            string commandLineArgs = $"/noautoresponse /nologo /nodemode:1 /nodeReuse:{ComponentHost.BuildParameters.EnableNodeReuse.ToString().ToLower()} /low:{ComponentHost.BuildParameters.LowPriority.ToString().ToLower()}";
 
             CommunicationsUtilities.Trace("Starting to acquire {1} new or existing node(s) to establish nodes from ID {0} to {2}...", nextNodeId, numberOfNodesToCreate, nextNodeId + numberOfNodesToCreate - 1);
 
-            Handshake hostHandshake = new(CommunicationsUtilities.GetHandshakeOptions(taskHost: false, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture(), nodeReuse: ComponentHost.BuildParameters.EnableNodeReuse, lowPriority: ComponentHost.BuildParameters.LowPriority));
+            Handshake hostHandshake = new(CommunicationsUtilities.GetHandshakeOptions(taskHost: false, taskHostParameters: TaskHostParameters.Empty, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture(), nodeReuse: ComponentHost.BuildParameters.EnableNodeReuse, lowPriority: ComponentHost.BuildParameters.LowPriority));
             IList<NodeContext> nodeContexts = GetNodes(null, commandLineArgs, nextNodeId, factory, hostHandshake, NodeContextCreated, NodeContextTerminated, numberOfNodesToCreate);
 
             if (nodeContexts.Count > 0)

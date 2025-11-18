@@ -9,6 +9,7 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 using Microsoft.Build.Utilities;
 
 #nullable disable
@@ -89,7 +90,11 @@ namespace Microsoft.Build.Tasks.ResourceHandling
             int indexStart = aliasedTypeName.IndexOf(',');
             if (aliases.TryGetValue(aliasedTypeName.Substring(indexStart + 2), out string fullAssemblyIdentity))
             {
+#if NET
+                return string.Concat(aliasedTypeName.AsSpan(0, indexStart + 2), fullAssemblyIdentity);
+#else
                 return aliasedTypeName.Substring(0, indexStart + 2) + fullAssemblyIdentity;
+#endif
             }
 
             // Allow "System.String" bare
@@ -197,7 +202,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
                         // Warn of BinaryFormatter exposure (SDK should turn this on by default in .NET 8+)
                         if (logWarningForBinaryFormatter)
                         {
-                            log?.LogWarningWithCodeFromResources(null, resxFilename, ((IXmlLineInfo)elem).LineNumber, ((IXmlLineInfo)elem).LinePosition, 0, 0, "GenerateResource.BinaryFormatterUse", name, typename);
+                            log?.LogWarningWithCodeFromResources(null, resxFilename, ((IXmlLineInfo)elem).LineNumber, ((IXmlLineInfo)elem).LinePosition, 0, 0, "GenerateResource.BinaryFormatterUse", name);
                         }
 
                         // BinaryFormatter from byte array
@@ -261,7 +266,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
             }
             else if (IsByteArray(fileRefType))
             {
-                byte[] byteArray = File.ReadAllBytes(fileName);
+                byte[] byteArray = FileSystems.Default.ReadFileAllBytes(fileName);
 
                 resources.Add(new LiveObjectResource(name, byteArray));
                 return;
@@ -270,7 +275,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
             {
                 // See special-case handling in ResXFileRef
                 // https://github.com/dotnet/winforms/blob/689cd9c69e632997bc85bf421af221d79b12ddd4/src/System.Windows.Forms/src/System/Resources/ResXFileRef.cs#L293-L297
-                byte[] byteArray = File.ReadAllBytes(fileName);
+                byte[] byteArray = FileSystems.Default.ReadFileAllBytes(fileName);
 
                 resources.Add(new LiveObjectResource(name, new MemoryStream(byteArray)));
                 return;
@@ -290,7 +295,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
         /// </remarks>
         private static bool IsByteArray(string fileRefType)
         {
-            return fileRefType.IndexOf("System.Byte[]") != -1 && fileRefType.IndexOf("mscorlib") != -1;
+            return fileRefType.Contains("System.Byte[]") && fileRefType.Contains("mscorlib");
         }
 
         internal static bool IsString(string fileRefType)
@@ -333,7 +338,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
                 string remainingString;
                 if (stringValue.StartsWith("\""))
                 {
-                    int lastIndexOfQuote = stringValue.LastIndexOf("\"");
+                    int lastIndexOfQuote = stringValue.LastIndexOf('"');
                     if (lastIndexOfQuote - 1 < 0)
                     {
                         throw new ArgumentException(nameof(stringValue));
@@ -349,7 +354,7 @@ namespace Microsoft.Build.Tasks.ResourceHandling
                 }
                 else
                 {
-                    int nextSemiColumn = stringValue.IndexOf(";");
+                    int nextSemiColumn = stringValue.IndexOf(';');
                     if (nextSemiColumn == -1)
                     {
                         throw new ArgumentException(nameof(stringValue));

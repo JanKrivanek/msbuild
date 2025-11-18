@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
 using Microsoft.Build.ObjectModelRemoting;
@@ -55,8 +54,8 @@ namespace Microsoft.Build.Evaluation
         /// </remarks>
         internal ProjectItemDefinition(Project project, string itemType)
         {
-            ErrorUtilities.VerifyThrowInternalNull(project, nameof(project));
-            ErrorUtilities.VerifyThrowArgumentLength(itemType, nameof(itemType));
+            ErrorUtilities.VerifyThrowInternalNull(project);
+            ErrorUtilities.VerifyThrowArgumentLength(itemType);
 
             _project = project;
             _itemType = itemType;

@@ -80,14 +80,17 @@ try {
   {
     $buildToolPath = Join-Path $bootstrapRoot "net472\MSBuild\Current\Bin\MSBuild.exe"
     $buildToolCommand = "";
-    $buildToolFramework = "net472"
+    $buildToolFramework = "netframework"
   }
   else
   {
-    $buildToolPath = Join-Path $bootstrapRoot "core\dotnet.exe"
-    # The version must be consistent with BootstrapSdkVersion
-    $buildToolCommand = Join-Path $bootstrapRoot "core\sdk\9.0.100-rc.1.24452.12\MSBuild.dll"
-    $buildToolFramework = "net9.0"
+    $buildToolPath = "$bootstrapRoot\core\dotnet.exe"
+    $propsFile = Join-Path $PSScriptRoot "Versions.props"
+    $bootstrapSdkVersion = ([xml](Get-Content $propsFile)).SelectSingleNode("//PropertyGroup/BootstrapSdkVersion").InnerText
+    $buildToolCommand = "$bootstrapRoot\core\sdk\$bootstrapSdkVersion\MSBuild.dll"
+    $buildToolFramework = "net"
+
+    $env:DOTNET_ROOT="$bootstrapRoot\core"
   }
 
   # Use separate artifacts folder for stage 2

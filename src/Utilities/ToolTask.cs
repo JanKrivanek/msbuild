@@ -857,9 +857,11 @@ namespace Microsoft.Build.Utilities
             }
             catch (Exception e) when (ExceptionHandling.IsIoRelatedException(e))
             {
+                string lockedFileMessage = LockCheck.GetLockedFileMessage(fileName);
+
                 // Warn only -- occasionally temp files fail to delete because of virus checkers; we
                 // don't want the build to fail in such cases
-                LogShared.LogWarningWithCodeFromResources("Shared.FailedDeletingTempFile", fileName, e.Message);
+                LogShared.LogWarningWithCodeFromResources("Shared.FailedDeletingTempFile", fileName, e.Message, lockedFileMessage);
             }
         }
 
@@ -1681,7 +1683,7 @@ namespace Microsoft.Build.Utilities
         /// <summary>
         /// An object to hold the event shutdown lock
         /// </summary>
-        private readonly object _eventCloseLock = new object();
+        private readonly LockType _eventCloseLock = new LockType();
 
         /// <summary>
         /// Splitter for environment variables

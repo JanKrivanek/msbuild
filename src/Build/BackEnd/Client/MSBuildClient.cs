@@ -48,11 +48,7 @@ namespace Microsoft.Build.Experimental
         /// The command line to process.
         /// The first argument on the command line is assumed to be the name/path of the executable, and is ignored.
         /// </summary>
-#if FEATURE_GET_COMMANDLINE
         private readonly string _commandLine;
-#else
-        private readonly string[] _commandLine;
-#endif
 
         /// <summary>
         /// The MSBuild client execution result.
@@ -112,13 +108,7 @@ namespace Microsoft.Build.Experimental
         /// on the command line is assumed to be the name/path of the executable, and is ignored</param>
         /// <param name="msbuildLocation"> Full path to current MSBuild.exe if executable is MSBuild.exe,
         /// or to version of MSBuild.dll found to be associated with the current process.</param>
-        public MSBuildClient(
-#if FEATURE_GET_COMMANDLINE
-            string commandLine,
-#else
-            string[] commandLine,
-#endif
-            string msbuildLocation)
+        public MSBuildClient(string commandLine, string msbuildLocation)
         {
             _serverEnvironmentVariables = new();
             _exitResult = new();
@@ -162,12 +152,7 @@ namespace Microsoft.Build.Experimental
         public MSBuildClientExitResult Execute(CancellationToken cancellationToken)
         {
             // Command line in one string used only in human readable content.
-            string descriptiveCommandLine =
-#if FEATURE_GET_COMMANDLINE
-                _commandLine;
-#else
-                string.Join(" ", _commandLine);
-#endif
+            string descriptiveCommandLine = _commandLine;
 
             CommunicationsUtilities.Trace("Executing build with command line '{0}'", descriptiveCommandLine);
 
@@ -176,7 +161,7 @@ namespace Microsoft.Build.Experimental
                 bool serverIsAlreadyRunning = ServerIsRunning();
                 if (KnownTelemetry.PartialBuildTelemetry != null)
                 {
-                    KnownTelemetry.PartialBuildTelemetry.InitialServerState = serverIsAlreadyRunning ? "hot" : "cold";
+                    KnownTelemetry.PartialBuildTelemetry.InitialMSBuildServerState = serverIsAlreadyRunning ? "hot" : "cold";
                 }
                 if (!serverIsAlreadyRunning)
                 {
@@ -474,7 +459,7 @@ namespace Microsoft.Build.Experimental
                 ];
                 NodeLauncher nodeLauncher = new NodeLauncher();
                 CommunicationsUtilities.Trace("Starting Server...");
-                Process msbuildProcess = nodeLauncher.Start(_msbuildLocation, string.Join(" ", msBuildServerOptions), nodeId: 0);
+                using Process msbuildProcess = nodeLauncher.Start(_msbuildLocation, string.Join(" ", msBuildServerOptions), nodeId: 0);
                 CommunicationsUtilities.Trace("Server started with PID: {0}", msbuildProcess?.Id);
             }
             catch (Exception ex)
@@ -521,7 +506,7 @@ namespace Microsoft.Build.Experimental
                 ? null
                 : new PartialBuildTelemetry(
                     startedAt: KnownTelemetry.PartialBuildTelemetry.StartAt.GetValueOrDefault(),
-                    initialServerState: KnownTelemetry.PartialBuildTelemetry.InitialServerState,
+                    initialServerState: KnownTelemetry.PartialBuildTelemetry.InitialMSBuildServerState,
                     serverFallbackReason: KnownTelemetry.PartialBuildTelemetry.ServerFallbackReason);
 
             return new ServerNodeBuildCommand(
@@ -534,10 +519,10 @@ namespace Microsoft.Build.Experimental
                         partialBuildTelemetry);
         }
 
-        private ServerNodeHandshake GetHandshake()
-        {
-            return new ServerNodeHandshake(CommunicationsUtilities.GetHandshakeOptions(taskHost: false, architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture()));
-        }
+        private ServerNodeHandshake GetHandshake() => new(CommunicationsUtilities.GetHandshakeOptions(
+            taskHost: false,
+            taskHostParameters: TaskHostParameters.Empty,
+            architectureFlagToSet: XMakeAttributes.GetCurrentMSBuildArchitecture()));
 
         /// <summary>
         /// Handle cancellation.
@@ -619,13 +604,16 @@ namespace Microsoft.Build.Experimental
             while (tryAgain && sw.ElapsedMilliseconds < timeoutMilliseconds)
             {
                 tryAgain = false;
-                try
+
+
+                if (NodeProviderOutOfProcBase.TryConnectToPipeStream(
+                    _nodeStream, _pipeName, _handshake, Math.Max(1, timeoutMilliseconds - (int)sw.ElapsedMilliseconds), out HandshakeResult result))
                 {
-                    NodeProviderOutOfProcBase.ConnectToPipeStream(_nodeStream, _pipeName, _handshake, Math.Max(1, timeoutMilliseconds - (int)sw.ElapsedMilliseconds));
+                    return true;
                 }
-                catch (Exception ex)
+                else
                 {
-                    if (ex is not TimeoutException && sw.ElapsedMilliseconds < timeoutMilliseconds)
+                    if (result.Status is not HandshakeStatus.Timeout && sw.ElapsedMilliseconds < timeoutMilliseconds)
                     {
                         CommunicationsUtilities.Trace("Retrying to connect to server after {0} ms", sw.ElapsedMilliseconds);
                         // This solves race condition for time in which server started but have not yet listen on pipe or
@@ -635,14 +623,14 @@ namespace Microsoft.Build.Experimental
                     }
                     else
                     {
-                        CommunicationsUtilities.Trace("Failed to connect to server: {0}", ex);
+                        CommunicationsUtilities.Trace("Failed to connect to server: {0}", result.ErrorMessage);
                         _exitResult.MSBuildClientExitType = MSBuildClientExitType.UnableToConnect;
                         return false;
                     }
                 }
             }
 
-            return true;
+            return false;
         }
 
         private void WritePacket(Stream nodeStream, INodePacket packet)

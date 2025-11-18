@@ -30,7 +30,7 @@ namespace Microsoft.Build.UnitTests
     {
         #region Properties
 
-        private readonly object _lockObj = new object();  // Protects _fullLog, _testOutputHelper, lists, counts
+        private readonly LockType _lockObj = new LockType();  // Protects _fullLog, _testOutputHelper, lists, counts
         private StringBuilder _fullLog = new StringBuilder();
         private readonly ITestOutputHelper _testOutputHelper;
         private readonly bool _profileEvaluation;
@@ -307,7 +307,7 @@ namespace Microsoft.Build.UnitTests
                             bool logMessage = !(eventArgs is BuildFinishedEventArgs) || LogBuildFinished;
                             if (logMessage)
                             {
-                                string msg = eventArgs.Message;
+                                string msg = eventArgs.Message ?? $"(null message in {eventArgs.GetType().Name} event)";
                                 if (eventArgs is BuildMessageEventArgs m && m.LineNumber != 0)
                                 {
                                     msg = $"{m.File}({m.LineNumber},{m.ColumnNumber}): {msg}";

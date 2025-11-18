@@ -74,7 +74,7 @@ namespace Microsoft.Build.Execution
             set
             {
                 ProjectInstance.VerifyThrowNotImmutable(IsImmutable);
-                ErrorUtilities.VerifyThrowArgumentNull(value, nameof(value));
+                ErrorUtilities.VerifyThrowArgumentNull(value);
                 _escapedValue = EscapingUtilities.Escape(value);
             }
         }
@@ -186,7 +186,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public override string ToString()
         {
-            return _name + "=" + _escapedValue;
+            return $"{_name}={_escapedValue}";
         }
 
         /// <summary>
@@ -322,7 +322,7 @@ namespace Microsoft.Build.Execution
         private static ProjectPropertyInstance Create(string name, string escapedValue, bool mayBeReserved, ElementLocation location, bool isImmutable, bool isEnvironmentProperty = false, LoggingContext loggingContext = null)
         {
             // Does not check immutability as this is only called during build (which is already protected) or evaluation
-            ErrorUtilities.VerifyThrowArgumentNull(escapedValue, nameof(escapedValue));
+            ErrorUtilities.VerifyThrowArgumentNull(escapedValue);
             if (location == null)
             {
                 ErrorUtilities.VerifyThrowArgument(!XMakeElements.ReservedItemNames.Contains(name), "OM_ReservedName", name);
@@ -388,6 +388,19 @@ namespace Microsoft.Build.Execution
             internal bool _loggedEnvProperty = false;
 
             internal LoggingContext loggingContext;
+        }
+
+
+        internal class SdkResolvedEnvironmentVariablePropertyInstance(string name, string escapedValue) : ProjectPropertyInstance(name, escapedValue)
+        {
+            /// <summary>
+            /// Whether this object can be changed. An immutable object cannot be made mutable.
+            /// </summary>
+            /// <remarks>
+            /// The environment is captured at the start of the build, so environment-derived
+            /// properties can't change.
+            /// </remarks>
+            public override bool IsImmutable => true;
         }
     }
 }

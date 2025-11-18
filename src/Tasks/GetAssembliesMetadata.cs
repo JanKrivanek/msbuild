@@ -2,17 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Runtime.Versioning;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Build.BackEnd;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Shared.FileSystem;
@@ -48,7 +39,7 @@ namespace Microsoft.Build.Tasks
             foreach (string assemblyPath in AssemblyPaths)
             {
                 // During DTB the referenced project may not has been built yet, so we need to check if the assembly already exists.
-                if (File.Exists(assemblyPath))
+                if (FileSystems.Default.FileExists(assemblyPath))
                 {
                     using (AssemblyInformation assemblyInformation = new(assemblyPath))
                     {

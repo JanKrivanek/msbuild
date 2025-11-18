@@ -24,7 +24,7 @@ namespace Microsoft.Build.Tasks
     /// <summary>
     /// The task factory provider for XAML tasks.
     /// </summary>
-    public class XamlTaskFactory : ITaskFactory
+    public class XamlTaskFactory : ITaskFactory, IOutOfProcTaskFactory
     {
         /// <summary>
         /// The namespace we put the task in.
@@ -35,11 +35,26 @@ namespace Microsoft.Build.Tasks
         /// The compiled task assembly.
         /// </summary>
         private Assembly _taskAssembly;
+        
+
+        private string _assemblyPath;
+
+        /// <summary>
+        /// Whether this factory should compile for out-of-process execution.
+        /// Set during Initialize() based on environment variables or host context.
+        /// </summary>
+        private bool _compileForOutOfProcess;
 
         /// <summary>
         /// The task type.
         /// </summary>
         private Type _taskType;
+        
+        /// <summary>
+        /// Location of the assembly for out of proc taskhosts. 
+        /// </summary>
+        public string GetAssemblyPath() => _assemblyPath;
+
 
         /// <summary>
         /// The name of the task pulled from the XAML.
@@ -71,7 +86,7 @@ namespace Microsoft.Build.Tasks
             {
                 if (_taskType == null)
                 {
-                    _taskType = _taskAssembly.GetType(String.Concat(XamlTaskNamespace, ".", TaskName), true);
+                    _taskType = _taskAssembly.GetType($"{XamlTaskNamespace}.{TaskName}", true);
                 }
 
                 return _taskType;
@@ -84,8 +99,8 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         public bool Initialize(string taskName, IDictionary<string, TaskPropertyInfo> taskParameters, string taskElementContents, IBuildEngine taskFactoryLoggingHost)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(taskName, nameof(taskName));
-            ErrorUtilities.VerifyThrowArgumentNull(taskParameters, nameof(taskParameters));
+            ErrorUtilities.VerifyThrowArgumentNull(taskName);
+            ErrorUtilities.VerifyThrowArgumentNull(taskParameters);
 
             var log = new TaskLoggingHelper(taskFactoryLoggingHost, taskName)
             {
@@ -115,6 +130,14 @@ namespace Microsoft.Build.Tasks
             // MSBuildToolsDirectoryRoot is the canonical location for MSBuild dll's.
             string pathToMSBuildBinaries = BuildEnvironmentHelper.Instance.MSBuildToolsDirectoryRoot;
 
+            _compileForOutOfProcess = TaskFactoryUtilities.ShouldCompileForOutOfProcess(taskFactoryLoggingHost);
+
+            // for the out of proc execution
+            if (_compileForOutOfProcess)
+            {
+                _assemblyPath = TaskFactoryUtilities.GetTemporaryTaskAssemblyPath();
+            }
+
             // create the code generator options
             // Since we are running msbuild 12.0 these had better load.
             var compilerParameters = new CompilerParameters(
@@ -125,7 +148,8 @@ namespace Microsoft.Build.Tasks
                     Path.Combine(pathToMSBuildBinaries, "Microsoft.Build.Tasks.Core.dll")
                 ])
             {
-                GenerateInMemory = true,
+                GenerateInMemory = !_compileForOutOfProcess,
+                OutputAssembly = _assemblyPath,
                 TreatWarningsAsErrors = false
             };
 
@@ -195,7 +219,7 @@ namespace Microsoft.Build.Tasks
         /// <param name="taskFactoryLoggingHost">The task factory logging host will log messages in the context of the task.</param>
         public ITask CreateTask(IBuildEngine taskFactoryLoggingHost)
         {
-            string fullTaskName = String.Concat(TaskNamespace, ".", TaskName);
+            string fullTaskName = $"{TaskNamespace}.{TaskName}";
             return (ITask)_taskAssembly.CreateInstance(fullTaskName);
         }
 
@@ -210,7 +234,7 @@ namespace Microsoft.Build.Tasks
         /// </remarks>
         public void CleanupTask(ITask task)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(task, nameof(task));
+            ErrorUtilities.VerifyThrowArgumentNull(task);
         }
 
         /// <summary>

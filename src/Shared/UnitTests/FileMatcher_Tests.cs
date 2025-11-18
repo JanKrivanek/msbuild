@@ -14,7 +14,6 @@ using Microsoft.Build.UnitTests.Shared;
 using Shouldly;
 using Xunit;
 using Xunit.Abstractions;
-using Xunit.NetCore.Extensions;
 
 #nullable disable
 
@@ -1101,29 +1100,42 @@ namespace Microsoft.Build.UnitTests
         [Fact]
         public void Unc()
         {
-            // Check UNC functionality
-            ValidateFileMatch(
-                "\\\\server\\c$\\**\\*.cs",
-                "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
-                true);
+            using (var env = TestEnvironment.Create())
+            {
+                try
+                {
+                    // Set env var to log on drive enumerating wildcard detection
+                    Helpers.ResetStateForDriveEnumeratingWildcardTests(env, "0");
 
-            ValidateNoFileMatch(
-                "\\\\server\\c$\\**\\*.cs",
-                "\\\\server\\c$\\Documents and Settings\\User\\Source.txt",
-                true);
-            ValidateFileMatch(
-                "\\\\**",
-                "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
-                true);
-            ValidateFileMatch(
-                "\\\\**\\*.*",
-                "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
-                true);
+                    // Check UNC functionality
+                    ValidateFileMatch(
+                        "\\\\server\\c$\\**\\*.cs",
+                        "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
+                        true);
 
-            ValidateFileMatch(
-                "**",
-                "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
-                true);
+                    ValidateNoFileMatch(
+                        "\\\\server\\c$\\**\\*.cs",
+                        "\\\\server\\c$\\Documents and Settings\\User\\Source.txt",
+                        true);
+                    ValidateFileMatch(
+                        "\\\\**",
+                        "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
+                        true);
+                    ValidateFileMatch(
+                        "\\\\**\\*.*",
+                        "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
+                        true);
+
+                    ValidateFileMatch(
+                        "**",
+                        "\\\\server\\c$\\Documents and Settings\\User\\Source.cs",
+                        true);
+                }
+                finally
+                {
+                    ChangeWaves.ResetStateForTests();
+                }
+            }
         }
 
         [Fact]
@@ -1169,11 +1181,24 @@ namespace Microsoft.Build.UnitTests
         [Fact]
         public void MultipleStarStar()
         {
-            // Multiple-** matches
-            ValidateFileMatch("c:\\**\\user\\**\\*.*", "c:\\Documents and Settings\\user\\NTUSER.DAT", true);
-            ValidateNoFileMatch("c:\\**\\user1\\**\\*.*", "c:\\Documents and Settings\\user\\NTUSER.DAT", true);
-            ValidateFileMatch("c:\\**\\user\\**\\*.*", "c://Documents and Settings\\user\\NTUSER.DAT", true);
-            ValidateNoFileMatch("c:\\**\\user1\\**\\*.*", "c:\\Documents and Settings//user\\NTUSER.DAT", true);
+            using (var env = TestEnvironment.Create())
+            {
+                try
+                {
+                    // Set env var to log on drive enumerating wildcard detection
+                    Helpers.ResetStateForDriveEnumeratingWildcardTests(env, "0");
+
+                    // Multiple-** matches
+                    ValidateFileMatch("c:\\**\\user\\**\\*.*", "c:\\Documents and Settings\\user\\NTUSER.DAT", true);
+                    ValidateNoFileMatch("c:\\**\\user1\\**\\*.*", "c:\\Documents and Settings\\user\\NTUSER.DAT", true);
+                    ValidateFileMatch("c:\\**\\user\\**\\*.*", "c://Documents and Settings\\user\\NTUSER.DAT", true);
+                    ValidateNoFileMatch("c:\\**\\user1\\**\\*.*", "c:\\Documents and Settings//user\\NTUSER.DAT", true);
+                }
+                finally
+                {
+                    ChangeWaves.ResetStateForTests();
+                }
+            }
         }
 
         [Fact]
@@ -1301,7 +1326,7 @@ namespace Microsoft.Build.UnitTests
             }
             finally
             {
-                FileMatcher.ClearFileEnumerationsCache();
+                FileMatcher.ClearCaches();
             }
         }
 
@@ -1353,7 +1378,7 @@ namespace Microsoft.Build.UnitTests
                     // Set env var to fail on drive enumerating wildcard detection
                     Helpers.ResetStateForDriveEnumeratingWildcardTests(env, "1");
 
-                    (string[] fileList, FileMatcher.SearchAction action, string excludeFileSpec) = FileMatcher.Default.GetFiles(
+                    (string[] fileList, FileMatcher.SearchAction action, string excludeFileSpec, _) = FileMatcher.Default.GetFiles(
                         string.Empty,
                         driveEnumeratingWildcard);
 
@@ -1362,7 +1387,7 @@ namespace Microsoft.Build.UnitTests
                     excludeFileSpec.ShouldBe(string.Empty);
 
                     // Handle failing with drive enumerating exclude
-                    (fileList, action, excludeFileSpec) = FileMatcher.Default.GetFiles(
+                    (fileList, action, excludeFileSpec, _) = FileMatcher.Default.GetFiles(
                         string.Empty,
                         @"/*/*.cs",
                         new List<string> { driveEnumeratingWildcard });
@@ -1394,7 +1419,7 @@ namespace Microsoft.Build.UnitTests
                     // Set env var to log on drive enumerating wildcard detection
                     Helpers.ResetStateForDriveEnumeratingWildcardTests(env, "0");
 
-                    (_, FileMatcher.SearchAction action, string excludeFileSpec) = FileMatcher.Default.GetFiles(
+                    (_, FileMatcher.SearchAction action, string excludeFileSpec, _) = FileMatcher.Default.GetFiles(
                         string.Empty,
                         driveEnumeratingWildcard);
 
@@ -1402,7 +1427,7 @@ namespace Microsoft.Build.UnitTests
                     excludeFileSpec.ShouldBe(string.Empty);
 
                     // Handle logging with drive enumerating exclude
-                    (_, action, excludeFileSpec) = FileMatcher.Default.GetFiles(
+                    (_, action, excludeFileSpec, _) = FileMatcher.Default.GetFiles(
                         string.Empty,
                         @"/*/*.cs",
                         new List<string> { driveEnumeratingWildcard });
