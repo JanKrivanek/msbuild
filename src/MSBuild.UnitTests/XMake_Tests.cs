@@ -14,6 +14,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Xml.Linq;
 using Microsoft.Build.CommandLine;
+using Microsoft.Build.CommandLine.Experimental;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Logging;
@@ -98,10 +99,7 @@ namespace Microsoft.Build.UnitTests
             CommandLineSwitches switches = new CommandLineSwitches();
             CommandLineParser parser = new CommandLineParser();
 
-            var arguments = new List<string>();
-            arguments.AddRange(new[] { "/p:a=b", "/p:c=d" });
-
-            parser.GatherCommandLineSwitches(arguments, switches);
+            parser.GatherCommandLineSwitches(["/p:a=b", "/p:c=d"], switches);
 
             string[] parameters = switches[CommandLineSwitches.ParameterizedSwitch.Property];
             parameters[0].ShouldBe("a=b");
@@ -114,12 +112,7 @@ namespace Microsoft.Build.UnitTests
             var switches = new CommandLineSwitches();
             CommandLineParser parser = new CommandLineParser();
 
-            var arguments = new List<string> {
-                "-p:a=b",
-                "--p:maxcpucount=8"
-            };
-
-            parser.GatherCommandLineSwitches(arguments, switches);
+            parser.GatherCommandLineSwitches(["-p:a=b", "--p:maxcpucount=8"], switches);
 
             string[] parameters = switches[CommandLineSwitches.ParameterizedSwitch.Property];
             parameters[0].ShouldBe("a=b");
@@ -132,10 +125,7 @@ namespace Microsoft.Build.UnitTests
             CommandLineSwitches switches = new CommandLineSwitches();
             CommandLineParser parser = new CommandLineParser();
 
-            var arguments = new List<string>();
-            arguments.AddRange(new[] { "/m:2" });
-
-            parser.GatherCommandLineSwitches(arguments, switches);
+            parser.GatherCommandLineSwitches(["/m:2"], switches);
 
             string[] parameters = switches[CommandLineSwitches.ParameterizedSwitch.MaxCPUCount];
             parameters[0].ShouldBe("2");
@@ -150,10 +140,7 @@ namespace Microsoft.Build.UnitTests
             CommandLineSwitches switches = new CommandLineSwitches();
             CommandLineParser parser = new CommandLineParser();
 
-            var arguments = new List<string>();
-            arguments.AddRange(new[] { "/m:3", "/m" });
-
-            parser.GatherCommandLineSwitches(arguments, switches);
+            parser.GatherCommandLineSwitches(["/m:3", "/m"], switches);
 
             string[] parameters = switches[CommandLineSwitches.ParameterizedSwitch.MaxCPUCount];
             parameters[1].ShouldBe(Convert.ToString(NativeMethodsShared.GetLogicalCoreCount()));
@@ -171,10 +158,7 @@ namespace Microsoft.Build.UnitTests
             CommandLineSwitches switches = new CommandLineSwitches();
             CommandLineParser parser = new CommandLineParser();
 
-            var arguments = new List<string>();
-            arguments.AddRange(new[] { "/m:" });
-
-            parser.GatherCommandLineSwitches(arguments, switches);
+            parser.GatherCommandLineSwitches(["/m:"], switches);
 
             string[] parameters = switches[CommandLineSwitches.ParameterizedSwitch.MaxCPUCount];
             parameters.Length.ShouldBe(0);
@@ -567,7 +551,7 @@ namespace Microsoft.Build.UnitTests
         [InlineData(@"/h")]
         public void Help(string indicator)
         {
-            MSBuildApp.Execute(@$"c:\bin\msbuild.exe {indicator} ")
+            MSBuildApp.Execute([@"c:\bin\msbuild.exe", indicator])
             .ShouldBe(MSBuildApp.ExitType.Success);
         }
 
@@ -661,11 +645,9 @@ namespace Microsoft.Build.UnitTests
         {
             string oldValueForMSBuildLoadMicrosoftTargetsReadOnly = Environment.GetEnvironmentVariable("MSBuildLoadMicrosoftTargetsReadOnly");
 
-            MSBuildApp.Execute(@"c:\bin\msbuild.exe -junk").ShouldBe(MSBuildApp.ExitType.SwitchError);
-
-            MSBuildApp.Execute(@"msbuild.exe -t").ShouldBe(MSBuildApp.ExitType.SwitchError);
-
-            MSBuildApp.Execute(@"msbuild.exe @bogus.rsp").ShouldBe(MSBuildApp.ExitType.InitializationError);
+            MSBuildApp.Execute([@"c:\bin\msbuild.exe", "-junk"]).ShouldBe(MSBuildApp.ExitType.SwitchError);
+            MSBuildApp.Execute([@"msbuild.exe", "-t"]).ShouldBe(MSBuildApp.ExitType.SwitchError);
+            MSBuildApp.Execute([@"msbuild.exe", "@bogus.rsp"]).ShouldBe(MSBuildApp.ExitType.InitializationError);
 
             Environment.SetEnvironmentVariable("MSBuildLoadMicrosoftTargetsReadOnly", oldValueForMSBuildLoadMicrosoftTargetsReadOnly);
         }
@@ -732,6 +714,65 @@ namespace Microsoft.Build.UnitTests
             Should.Throw<CommandLineSwitchException>(() =>
             {
                 MSBuildApp.ProcessMaxCPUCountSwitch(new[] { "foo" });
+            });
+        }
+
+        [Fact]
+        public void ValidNodeModeSwitch_Integers()
+        {
+            MSBuildApp.ParseNodeMode("1").ShouldBe(NodeMode.OutOfProcNode);
+            MSBuildApp.ParseNodeMode("2").ShouldBe(NodeMode.OutOfProcTaskHostNode);
+            MSBuildApp.ParseNodeMode("3").ShouldBe(NodeMode.OutOfProcRarNode);
+            MSBuildApp.ParseNodeMode("8").ShouldBe(NodeMode.OutOfProcServerNode);
+        }
+
+        [Fact]
+        public void ValidNodeModeSwitch_EnumNames()
+        {
+            MSBuildApp.ParseNodeMode("OutOfProcNode").ShouldBe(NodeMode.OutOfProcNode);
+            MSBuildApp.ParseNodeMode("outofprocnode").ShouldBe(NodeMode.OutOfProcNode);
+            MSBuildApp.ParseNodeMode("OUTOFPROCNODE").ShouldBe(NodeMode.OutOfProcNode);
+            MSBuildApp.ParseNodeMode("OutOfProcTaskHostNode").ShouldBe(NodeMode.OutOfProcTaskHostNode);
+            MSBuildApp.ParseNodeMode("outofproctaskhostnode").ShouldBe(NodeMode.OutOfProcTaskHostNode);
+            MSBuildApp.ParseNodeMode("OutOfProcRarNode").ShouldBe(NodeMode.OutOfProcRarNode);
+            MSBuildApp.ParseNodeMode("outofprocrarnode").ShouldBe(NodeMode.OutOfProcRarNode);
+            MSBuildApp.ParseNodeMode("OutOfProcServerNode").ShouldBe(NodeMode.OutOfProcServerNode);
+            MSBuildApp.ParseNodeMode("outofprocservernode").ShouldBe(NodeMode.OutOfProcServerNode);
+        }
+
+        [Fact]
+        public void InvalidNodeModeSwitch_InvalidInteger()
+        {
+            Should.Throw<CommandLineSwitchException>(() =>
+            {
+                MSBuildApp.ParseNodeMode("4");
+            });
+        }
+
+        [Fact]
+        public void InvalidNodeModeSwitch_NegativeInteger()
+        {
+            Should.Throw<CommandLineSwitchException>(() =>
+            {
+                MSBuildApp.ParseNodeMode("-1");
+            });
+        }
+
+        [Fact]
+        public void InvalidNodeModeSwitch_InvalidString()
+        {
+            Should.Throw<CommandLineSwitchException>(() =>
+            {
+                MSBuildApp.ParseNodeMode("InvalidMode");
+            });
+        }
+
+        [Fact]
+        public void InvalidNodeModeSwitch_EmptyString()
+        {
+            Should.Throw<CommandLineSwitchException>(() =>
+            {
+                MSBuildApp.ParseNodeMode("");
             });
         }
 
@@ -880,6 +921,38 @@ namespace Microsoft.Build.UnitTests
             result = RunnerUtilities.ExecMSBuild($" {project.Path} {extraSwitch} -getResultOutputFile:", out success);
             success.ShouldBeFalse();
             result.ShouldContain("MSB1068");
+        }
+
+        /// <summary>
+        /// Regression test for issue where getTargetResult/getItem would throw an unhandled exception
+        /// when the item spec contained illegal path characters (e.g. compiler command line flags).
+        /// </summary>
+        [Theory]
+        [InlineData("-getTargetResult:GetCompileCommands", "\"Result\": \"Success\"")]
+        [InlineData("-getItem:CompileCommands", "\"Identity\":")]
+        public void GetTargetResultWithIllegalPathCharacters(string extraSwitch, string expectedContent)
+        {
+            using TestEnvironment env = TestEnvironment.Create();
+            // Create a project that mimics the ClangTidy target - it outputs items with illegal path characters
+            // (compiler command line flags) as the item spec.
+            TransientTestFile project = env.CreateFile("testProject.csproj", @"
+<Project>
+  <ItemGroup>
+    <CompileCommands Include=""/c /nologo /W3 /WX- /diagnostics:column /Od /D _DEBUG"" />
+  </ItemGroup>
+
+  <Target Name=""GetCompileCommands"" Returns=""@(CompileCommands)"">
+    <ItemGroup>
+      <CompileCommands Include=""/c /fp:precise /permissive- /Fa&quot;Debug\\&quot; /Fo&quot;Debug\\&quot; /Gd --target=amd64-pc-windows-msvc /TP"" />
+    </ItemGroup>
+  </Target>
+</Project>
+");
+            string results = RunnerUtilities.ExecMSBuild($" {project.Path} /t:GetCompileCommands {extraSwitch}", out bool success);
+            // The build should succeed instead of throwing an unhandled exception
+            success.ShouldBeTrue(results);
+            // The output should contain the expected content
+            results.ShouldContain(expectedContent);
         }
 
         [Theory]
@@ -1147,7 +1220,7 @@ namespace Microsoft.Build.UnitTests
                     sw.WriteLine(projectString);
                 }
                 // Should pass
-                MSBuildApp.Execute(@"c:\bin\msbuild.exe " + quotedProjectFileName).ShouldBe(MSBuildApp.ExitType.Success);
+                MSBuildApp.Execute([@"c:\bin\msbuild.exe", quotedProjectFileName]).ShouldBe(MSBuildApp.ExitType.Success);
             }
             finally
             {
@@ -1181,7 +1254,13 @@ namespace Microsoft.Build.UnitTests
                     sw.WriteLine(projectString);
                 }
                 // Should pass
-                MSBuildApp.Execute(@$"c:\bin\msbuild.exe /logger:FileLogger,""Microsoft.Build, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"";""LogFile={logFile}"" /verbosity:detailed " + quotedProjectFileName).ShouldBe(MSBuildApp.ExitType.Success);
+                MSBuildApp
+                    .Execute([
+                            NativeMethodsShared.IsWindows ? @"c:\bin\msbuild.exe" : "/msbuild.exe",
+                            @$"/logger:FileLogger,""Microsoft.Build, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"";""LogFile={logFile}""",
+                            "/verbosity:detailed",
+                            quotedProjectFileName])
+                    .ShouldBe(MSBuildApp.ExitType.Success);
 
                 File.Exists(logFile).ShouldBeTrue();
 
@@ -2240,6 +2319,44 @@ namespace Microsoft.Build.UnitTests
             distributedLoggerRecords.Count.ShouldBe(0); // "Expected no distributed loggers to be attached"
             loggers.Count.ShouldBe(0); // "Expected no central loggers to be attached"
         }
+
+        /// <summary>
+        /// Verify that DistributedLoggerRecords with null CentralLogger don't cause exceptions when creating ProjectCollection
+        /// This is a regression test for the issue where -dfl flag caused MSB1025 error due to null logger not being filtered.
+        /// </summary>
+        [Fact]
+        public void TestNullCentralLoggerInDistributedLoggerRecord()
+        {
+            // Simulate the scenario when using -dfl flag
+            // ProcessDistributedFileLogger creates a DistributedLoggerRecord with null CentralLogger
+            var distributedLoggerRecords = new List<DistributedLoggerRecord>();
+            bool distributedFileLogger = true;
+            string[] fileLoggerParameters = null;
+
+            MSBuildApp.ProcessDistributedFileLogger(
+                distributedFileLogger,
+                fileLoggerParameters,
+                distributedLoggerRecords);
+
+            // Verify that we have a distributed logger record with null central logger
+            distributedLoggerRecords.Count.ShouldBe(1);
+            distributedLoggerRecords[0].CentralLogger.ShouldBeNull();
+
+            // This should not throw ArgumentNullException when creating ProjectCollection
+            // The fix filters out null central loggers from the evaluationLoggers array
+            var loggers = Array.Empty<ILogger>();
+            Should.NotThrow(() =>
+            {
+                using var projectCollection = new ProjectCollection(
+                    new Dictionary<string, string>(),
+                    loggers: [.. loggers, .. distributedLoggerRecords.Select(d => d.CentralLogger).Where(l => l is not null)],
+                    remoteLoggers: null,
+                    toolsetDefinitionLocations: ToolsetDefinitionLocations.Default,
+                    maxNodeCount: 1,
+                    onlyLogCriticalEvents: false,
+                    loadProjectsReadOnly: true);
+            });
+        }
         #endregion
 
         #region ProcessConsoleLoggerSwitches
@@ -2660,6 +2777,116 @@ $@"<Project>
             archive.Entries.ShouldContain(e => e.FullName.EndsWith(".proj", StringComparison.OrdinalIgnoreCase), 2);
         }
 
+        [Fact]
+        public void MultipleBinaryLogsCreatesMultipleFiles()
+        {
+            var testProject = _env.CreateFile("TestProject.proj", @"
+            <Project>
+              <Target Name=""Build"">
+                <Message Text=""Hello World!"" />
+              </Target>
+            </Project>
+            ");
+
+            string binLogLocation = _env.DefaultTestDirectory.Path;
+            string binLog1 = Path.Combine(binLogLocation, "1.binlog");
+            string binLog2 = Path.Combine(binLogLocation, "2.binlog");
+            string binLog3 = Path.Combine(binLogLocation, "3.binlog");
+
+            string output = RunnerUtilities.ExecMSBuild($"\"{testProject.Path}\" \"/bl:{binLog1}\" \"/bl:{binLog2}\" \"/bl:{binLog3}\"", out var success, _output);
+
+            success.ShouldBeTrue(output);
+
+            // Verify all three binlog files exist
+            File.Exists(binLog1).ShouldBeTrue("First binlog file should exist");
+            File.Exists(binLog2).ShouldBeTrue("Second binlog file should exist");
+            File.Exists(binLog3).ShouldBeTrue("Third binlog file should exist");
+
+            // Verify all files have content (are not empty)
+            new FileInfo(binLog1).Length.ShouldBeGreaterThan(0, "First binlog should not be empty");
+            new FileInfo(binLog2).Length.ShouldBeGreaterThan(0, "Second binlog should not be empty");
+            new FileInfo(binLog3).Length.ShouldBeGreaterThan(0, "Third binlog should not be empty");
+
+            // Verify all files are identical (have the same content)
+            byte[] file1Bytes = File.ReadAllBytes(binLog1);
+            byte[] file2Bytes = File.ReadAllBytes(binLog2);
+            byte[] file3Bytes = File.ReadAllBytes(binLog3);
+
+            file1Bytes.SequenceEqual(file2Bytes).ShouldBeTrue("First and second binlog should be identical");
+            file1Bytes.SequenceEqual(file3Bytes).ShouldBeTrue("First and third binlog should be identical");
+        }
+
+        [Fact]
+        public void MultipleBinaryLogsWithDuplicatesCreateDistinctFiles()
+        {
+            var testProject = _env.CreateFile("TestProject.proj", @"
+            <Project>
+              <Target Name=""Build"">
+                <Message Text=""Hello World!"" />
+              </Target>
+            </Project>
+            ");
+
+            string binLogLocation = _env.DefaultTestDirectory.Path;
+            string binLog1 = Path.Combine(binLogLocation, "1.binlog");
+            string binLog2 = Path.Combine(binLogLocation, "2.binlog");
+
+            // Specify binLog1 twice - should only create two distinct files
+            string output = RunnerUtilities.ExecMSBuild($"\"{testProject.Path}\" \"/bl:{binLog1}\" \"/bl:{binLog2}\" \"/bl:{binLog1}\"", out var success, _output);
+
+            success.ShouldBeTrue(output);
+
+            // Verify both binlog files exist
+            File.Exists(binLog1).ShouldBeTrue("First binlog file should exist");
+            File.Exists(binLog2).ShouldBeTrue("Second binlog file should exist");
+
+            // Verify both files are identical
+            byte[] file1Bytes = File.ReadAllBytes(binLog1);
+            byte[] file2Bytes = File.ReadAllBytes(binLog2);
+
+            file1Bytes.SequenceEqual(file2Bytes).ShouldBeTrue("Binlog files should be identical");
+        }
+
+        [Fact]
+        public void MultipleBinaryLogsWithDifferentConfigurationsCreatesSeparateLoggers()
+        {
+            var testProject = _env.CreateFile("TestProject.proj", @"
+            <Project>
+              <Import Project=""Imported.proj"" />
+              <Target Name=""Build"">
+                <Message Text=""Hello World!"" />
+              </Target>
+            </Project>
+            ");
+
+            _env.CreateFile("Imported.proj", @"
+            <Project>
+              <PropertyGroup>
+                <TestProp>Value</TestProp>
+              </PropertyGroup>
+            </Project>
+            ");
+
+            string binLogLocation = _env.DefaultTestDirectory.Path;
+            string binLog1 = Path.Combine(binLogLocation, "with-imports.binlog");
+            string binLog2 = Path.Combine(binLogLocation, "no-imports.binlog");
+
+            // One with default imports, one with ProjectImports=None
+            string output = RunnerUtilities.ExecMSBuild($"\"{testProject.Path}\" \"/bl:{binLog1}\" \"/bl:{binLog2};ProjectImports=None\"", out var success, _output);
+
+            success.ShouldBeTrue(output);
+
+            // Verify both binlog files exist
+            File.Exists(binLog1).ShouldBeTrue("First binlog file should exist");
+            File.Exists(binLog2).ShouldBeTrue("Second binlog file should exist");
+
+            // Verify files are different sizes (one has imports embedded, one doesn't)
+            long size1 = new FileInfo(binLog1).Length;
+            long size2 = new FileInfo(binLog2).Length;
+
+            size1.ShouldBeGreaterThan(size2, "Binlog with imports should be larger than one without");
+        }
+
         [Theory]
         [InlineData("-warnaserror", "", "", false)]
         [InlineData("-warnaserror -warnnotaserror:FOR123", "", "", true)]
@@ -2924,7 +3151,7 @@ EndGlobal
             testEnvironment.SetEnvironmentVariable("MSBUILDFORCEALLTASKSOUTOFPROC", "1");
             string project = testEnvironment.CreateTestProjectWithFiles("project.proj", projectContent).ProjectFile;
 
-            MSBuildApp.Execute(@"c:\bin\msbuild.exe " + project + " / m:257 /mt").ShouldBe(MSBuildApp.ExitType.SwitchError);
+            MSBuildApp.Execute([@"c:\bin\msbuild.exe", project, "/m:257 /mt"]).ShouldBe(MSBuildApp.ExitType.SwitchError);
         }
 
         private string CopyMSBuild()
