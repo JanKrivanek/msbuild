@@ -2,13 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Internal;
 using Microsoft.Build.Shared;
-using Xunit.Abstractions;
+using Xunit;
 using Constants = Microsoft.Build.Framework.Constants;
 
 #nullable disable
@@ -58,14 +59,7 @@ namespace Microsoft.Build.UnitTests.Shared
         /// </summary>
         public static string ExecMSBuild(string pathToMsBuildExe, string msbuildParameters, out bool successfulExit, bool shellExecute = false, ITestOutputHelper outputHelper = null)
         {
-#if FEATURE_RUN_EXE_IN_TESTS
-            var pathToExecutable = pathToMsBuildExe;
-#else
-            var pathToExecutable = s_dotnetExePath;
-            msbuildParameters = FileUtilities.EnsureDoubleQuotes(pathToMsBuildExe) + " " + msbuildParameters;
-#endif
-
-            return RunProcessAndGetOutput(pathToExecutable, msbuildParameters, out successfulExit, shellExecute, outputHelper);
+            return RunProcessAndGetOutput(pathToMsBuildExe, msbuildParameters, out successfulExit, shellExecute, outputHelper, environmentVariables: GetMSBuildEnvironmentVariables());
         }
 
         public static string ExecBootstrapedMSBuild(
@@ -77,12 +71,28 @@ namespace Microsoft.Build.UnitTests.Shared
             int timeoutMilliseconds = 30_000)
         {
 #if NET
-            string pathToExecutable = EnvironmentProvider.GetDotnetExePathFromFolder(BootstrapMsBuildBinaryLocation);
-            msbuildParameters = Path.Combine(BootstrapMsBuildBinaryLocation, "sdk", BootstrapLocationAttribute.BootstrapSdkVersion, Constants.MSBuildAssemblyName) + " " + msbuildParameters;
+            string pathToExecutable = Path.Combine(BootstrapMsBuildBinaryLocation, "sdk", BootstrapLocationAttribute.BootstrapSdkVersion, Constants.MSBuildExecutableName);
 #else
             string pathToExecutable = Path.Combine(BootstrapMsBuildBinaryLocation, Constants.MSBuildExecutableName);
 #endif
-            return RunProcessAndGetOutput(pathToExecutable, msbuildParameters, out successfulExit, shellExecute, outputHelper, attachProcessId, timeoutMilliseconds);
+            return RunProcessAndGetOutput(pathToExecutable, msbuildParameters, out successfulExit, shellExecute, outputHelper, attachProcessId, timeoutMilliseconds, environmentVariables: GetMSBuildEnvironmentVariables());
+        }
+
+        /// <summary>
+        /// Returns environment variables that should be set when launching MSBuild as a child process.
+        /// On .NET Core, this includes DOTNET_HOST_PATH so that tasks like RoslynCodeTaskFactory
+        /// can locate the dotnet host even when MSBuild runs as a native app host.
+        /// </summary>
+        private static Dictionary<string, string> GetMSBuildEnvironmentVariables()
+        {
+#if !FEATURE_RUN_EXE_IN_TESTS
+            return new Dictionary<string, string>
+            {
+                [Constants.DotnetHostPathEnvVarName] = s_dotnetExePath,
+            };
+#else
+            return null;
+#endif
         }
 
         private static void AdjustForShellExecution(ref string pathToExecutable, ref string arguments)
@@ -111,7 +121,8 @@ namespace Microsoft.Build.UnitTests.Shared
             bool shellExecute = false,
             ITestOutputHelper outputHelper = null,
             bool attachProcessId = true,
-            int timeoutMilliseconds = 30_000)
+            int timeoutMilliseconds = 30_000,
+            Dictionary<string, string> environmentVariables = null)
         {
             if (shellExecute)
             {
@@ -128,6 +139,14 @@ namespace Microsoft.Build.UnitTests.Shared
                 UseShellExecute = false,
                 Arguments = parameters
             };
+
+            if (environmentVariables != null)
+            {
+                foreach (var kvp in environmentVariables)
+                {
+                    psi.Environment[kvp.Key] = kvp.Value;
+                }
+            }
             string output = string.Empty;
             int pid = -1;
 
@@ -153,6 +172,7 @@ namespace Microsoft.Build.UnitTests.Shared
                 p.StandardInput.Dispose();
 
                 TimeSpan timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
+                Stopwatch sw = Stopwatch.StartNew();
                 if (Traits.Instance.DebugUnitTests)
                 {
                     p.WaitForExit();
@@ -165,13 +185,31 @@ namespace Microsoft.Build.UnitTests.Shared
                     throw new TimeoutException($"Test failed due to timeout: process {p.Id} is active for more than {timeout.TotalSeconds} sec.");
                 }
 
+                // Capture elapsed at process exit, before the post-exit drain below, so the
+                // telemetry below reports the budget-relevant time only (the drain is bookkeeping).
+                long exitElapsedMs = sw.ElapsedMilliseconds;
+
                 // We need the WaitForExit call without parameters because our processing of output/error streams is not synchronous.
                 // See https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit?view=net-6.0#system-diagnostics-process-waitforexit(system-int32).
                 // The overload WaitForExit() waits for the error and output to be handled. The WaitForExit(int timeout) overload does not, so we could lose the data.
                 p.WaitForExit();
+                sw.Stop();
 
                 pid = p.Id;
                 successfulExit = p.ExitCode == 0;
+
+                // Telemetry: log actual elapsed time so callers tuning their timeouts can see
+                // how close to the budget we ran. In DebugUnitTests mode the budget is not
+                // enforced (WaitForExit without timeout above), so the budget/headroom fields
+                // would be misleading and are omitted.
+                if (Traits.Instance.DebugUnitTests)
+                {
+                    WriteOutput($"Process {pid} exited in {exitElapsedMs}ms (DebugUnitTests: budget not enforced)");
+                }
+                else
+                {
+                    WriteOutput($"Process {pid} exited in {exitElapsedMs}ms (budget {timeoutMilliseconds}ms, {timeoutMilliseconds - exitElapsedMs}ms remaining)");
+                }
             }
 
             if (attachProcessId)

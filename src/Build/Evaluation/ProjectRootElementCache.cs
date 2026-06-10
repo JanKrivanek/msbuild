@@ -12,7 +12,6 @@ using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Internal;
-using Microsoft.Build.Shared;
 using ErrorUtilities = Microsoft.Build.Shared.ErrorUtilities;
 using OutOfProcNode = Microsoft.Build.Execution.OutOfProcNode;
 
@@ -104,9 +103,7 @@ namespace Microsoft.Build.Evaluation
             public ReentrancyGuard()
             {
                 s_getEntriesNumber++;
-                ErrorUtilities.VerifyThrow(
-                    s_getEntriesNumber == 1,
-                    "Reentrance to the ProjectRootElementCache.Get function detected.");
+                Assumed.Equal(s_getEntriesNumber, 1, "Reentrance to the ProjectRootElementCache.Get function detected.");
             }
 
             public void Dispose()
@@ -253,9 +250,7 @@ namespace Microsoft.Build.Evaluation
             using var reentrancyGuard = new ReentrancyGuard();
 
             // Verify that we never call this with _locker held, as that would create a lock ordering inversion with the per-file lock.
-            ErrorUtilities.VerifyThrow(
-                !System.Threading.Monitor.IsEntered(_locker),
-                "Detected lock ordering inversion in ProjectRootElementCache.");
+            Assumed.False(System.Threading.Monitor.IsEntered(_locker), "Detected lock ordering inversion in ProjectRootElementCache.");
 #endif
             // Should already have been canonicalized
             ErrorUtilities.VerifyThrowInternalRooted(projectFile);
@@ -346,12 +341,8 @@ namespace Microsoft.Build.Evaluation
             if (projectRootElement == null || projectRootElementIsInvalid)
             {
                 projectRootElement = loadProjectRootElement(projectFile, this);
-                ErrorUtilities.VerifyThrowInternalNull(projectRootElement, "projectRootElement");
-                ErrorUtilities.VerifyThrow(
-                    projectRootElement.FullPath.Equals(projectFile, StringComparison.OrdinalIgnoreCase),
-                    "Got project back with incorrect path. Expected path: {0}, received path: {1}.",
-                    projectFile,
-                    projectRootElement.FullPath);
+                Assumed.NotNull(projectRootElement);
+                Assumed.Equal(projectRootElement.FullPath, projectFile, StringComparison.OrdinalIgnoreCase, $"Got project back with incorrect path. Expected path: {projectFile}, received path: {projectRootElement.FullPath}.");
 
                 // An implicit load will never reset the explicit flag.
                 if (isExplicitlyLoaded)
@@ -394,7 +385,7 @@ namespace Microsoft.Build.Evaluation
         {
             lock (_locker)
             {
-                ErrorUtilities.VerifyThrowArgumentLength(oldFullPath);
+                ArgumentException.ThrowIfNullOrEmpty(oldFullPath);
                 RenameEntryInternal(oldFullPath, projectRootElement);
             }
         }
@@ -514,7 +505,7 @@ namespace Microsoft.Build.Evaluation
         /// </remarks>
         internal override void DiscardAnyWeakReference(ProjectRootElement projectRootElement)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectRootElement);
+            ArgumentNullException.ThrowIfNull(projectRootElement);
 
             // A PRE may be unnamed if it was only used in memory.
             if (projectRootElement.FullPath != null)
@@ -535,12 +526,12 @@ namespace Microsoft.Build.Evaluation
         /// </remarks>
         private void RenameEntryInternal(string oldFullPathIfAny, ProjectRootElement projectRootElement)
         {
-            ErrorUtilities.VerifyThrowInternalNull(projectRootElement.FullPath, "FullPath");
+            Assumed.NotNull(projectRootElement.FullPath);
 
             if (oldFullPathIfAny != null)
             {
                 ErrorUtilities.VerifyThrowInternalRooted(oldFullPathIfAny);
-                ErrorUtilities.VerifyThrow(_weakCache[oldFullPathIfAny] == projectRootElement, "Should already be present");
+                Assumed.Equal(_weakCache[oldFullPathIfAny], projectRootElement, "Should already be present");
                 _weakCache.Remove(oldFullPathIfAny);
             }
 

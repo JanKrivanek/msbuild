@@ -7,7 +7,6 @@ using System.Reflection;
 
 #if !FEATURE_CULTUREINFO_GETCULTURES
 using System.Linq;
-using Microsoft.Build.Framework;
 #endif
 
 #nullable disable
@@ -30,12 +29,8 @@ namespace Microsoft.Build.Shared
         private static Lazy<CultureInfo[]> s_validCultures = new Lazy<CultureInfo[]>(() => GetValidCultures(), true);
 #endif
 
-#if !CLR2COMPATIBILITY
         private static Lazy<Assembly> s_entryAssembly = new Lazy<Assembly>(() => GetEntryAssembly());
         public static Assembly EntryAssembly => s_entryAssembly.Value;
-#else
-        public static Assembly EntryAssembly = GetEntryAssembly();
-#endif
 
         public static string GetAssemblyLocation(Assembly assembly)
         {
@@ -55,22 +50,8 @@ namespace Microsoft.Build.Shared
 #endif
         }
 
-#if CLR2COMPATIBILITY
-        /// <summary>
-        /// Shim for the lack of <see cref="System.Reflection.IntrospectionExtensions.GetTypeInfo"/> in .NET 3.5.
-        /// </summary>
-        public static Type GetTypeInfo(this Type t)
-        {
-            return t;
-        }
-#endif
-
         public static AssemblyName CloneIfPossible(this AssemblyName assemblyNameToClone)
         {
-#if CLR2COMPATIBILITY
-            return (AssemblyName)assemblyNameToClone.Clone();
-#else
-
             // NOTE: In large projects, this is called a lot. Avoid calling AssemblyName.Clone
             // because it clones the Version property (which is immutable) and the PublicKey property
             // and the PublicKeyToken property.
@@ -98,8 +79,6 @@ namespace Microsoft.Build.Shared
 #endif
 
             return name;
-#endif
-
         }
 
 #if !FEATURE_CULTUREINFO_GETCULTURES
@@ -153,16 +132,15 @@ namespace Microsoft.Build.Shared
         {
             var cultureTypesType = s_cultureInfoGetCultureMethod?.GetParameters().FirstOrDefault()?.ParameterType;
 
-            FrameworkErrorUtilities.VerifyThrow(cultureTypesType?.Name == "CultureTypes" &&
-                                       Enum.IsDefined(cultureTypesType, "AllCultures"),
-                                       "GetCulture is expected to accept CultureTypes.AllCultures");
+            Assumed.True(cultureTypesType?.Name == "CultureTypes" &&
+                Enum.IsDefined(cultureTypesType, "AllCultures"), "GetCulture is expected to accept CultureTypes.AllCultures");
 
             var allCulturesEnumValue = Enum.Parse(cultureTypesType, "AllCultures", true);
 
             var cultures = s_cultureInfoGetCultureMethod.Invoke(null, [allCulturesEnumValue]) as CultureInfo[];
 
             // CultureInfo.GetCultures should work if all reflection checks pass
-            FrameworkErrorUtilities.VerifyThrowInternalNull(cultures);
+            Assumed.NotNull(cultures);
 
             return cultures;
         }

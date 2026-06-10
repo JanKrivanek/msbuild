@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Text.RegularExpressions;
 using Microsoft.Build.Collections;
+using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Microsoft.NET.StringTools;
 
@@ -91,7 +92,7 @@ namespace Microsoft.Build.Globbing
         /// <inheritdoc />
         public bool IsMatch(string stringToMatch)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(stringToMatch);
+            ArgumentNullException.ThrowIfNull(stringToMatch);
 
             if (!IsLegal)
             {
@@ -115,7 +116,7 @@ namespace Microsoft.Build.Globbing
         /// <returns></returns>
         public MatchInfoResult MatchInfo(string stringToMatch)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(stringToMatch);
+            ArgumentNullException.ThrowIfNull(stringToMatch);
 
             if (FileUtilities.PathIsInvalid(stringToMatch) || !IsLegal)
             {
@@ -168,8 +169,8 @@ namespace Microsoft.Build.Globbing
         /// <returns></returns>
         public static MSBuildGlob Parse(string globRoot, string fileSpec)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(globRoot);
-            ErrorUtilities.VerifyThrowArgumentNull(fileSpec);
+            ArgumentNullException.ThrowIfNull(globRoot);
+            ArgumentNullException.ThrowIfNull(fileSpec);
             ErrorUtilities.VerifyThrowArgumentInvalidPath(globRoot, nameof(globRoot));
 
             if (string.IsNullOrEmpty(globRoot))

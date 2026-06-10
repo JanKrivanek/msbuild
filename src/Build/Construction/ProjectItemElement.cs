@@ -65,7 +65,7 @@ namespace Microsoft.Build.Construction
         internal ProjectItemElement(XmlElementWithLocation xmlElement, ProjectItemGroupElement parent, ProjectRootElement containingProject)
             : base(xmlElement, parent, containingProject)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(parent);
+            ArgumentNullException.ThrowIfNull(parent);
         }
 
         /// <summary>
@@ -286,6 +286,11 @@ namespace Microsoft.Build.Construction
         public ICollection<ProjectMetadataElement> Metadata => GetChildrenOfType<ProjectMetadataElement>();
 
         /// <summary>
+        /// Use this instead of <see cref="Metadata"/> to avoid boxing the struct enumerator.
+        /// </summary>
+        internal ProjectElementSiblingSubTypeCollection<ProjectMetadataElement> MetadataEnumerable => GetChildrenOfType<ProjectMetadataElement>();
+
+        /// <summary>
         /// Location of the include attribute
         /// </summary>
         public ElementLocation IncludeLocation => GetAttributeLocation(XMakeAttributes.include);
@@ -389,8 +394,8 @@ namespace Microsoft.Build.Construction
         /// </param>
         public ProjectMetadataElement AddMetadata(string name, string unevaluatedValue, bool expressAsAttribute)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(name);
-            ErrorUtilities.VerifyThrowArgumentNull(unevaluatedValue);
+            ArgumentException.ThrowIfNullOrEmpty(name);
+            ArgumentNullException.ThrowIfNull(unevaluatedValue);
 
             if (expressAsAttribute)
             {
@@ -439,7 +444,7 @@ namespace Microsoft.Build.Construction
         /// </remarks>
         internal void ChangeItemType(string newItemType)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(newItemType);
+            ArgumentException.ThrowIfNullOrEmpty(newItemType);
             XmlUtilities.VerifyThrowArgumentValidElementName(newItemType);
             ErrorUtilities.VerifyThrowArgument(!XMakeElements.ReservedItemNames.Contains(newItemType), "CannotModifyReservedItem", newItemType);
             if (Link != null)

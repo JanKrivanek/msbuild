@@ -110,6 +110,33 @@ namespace Microsoft.Build.UnitTests
         }
 
         [Fact]
+        public void RoundtripLoggersRegisteredEventArgs()
+        {
+            var args = new LoggersRegisteredEventArgs(new List<RegisteredLoggerInfo>
+            {
+                new RegisteredLoggerInfo("FileLogger", new[] { @"C:\logs\build.log" }),
+                new RegisteredLoggerInfo("BinaryLogger"),
+                new RegisteredLoggerInfo(
+                    "ConsoleLogger",
+                    outputFilePaths: null,
+                    verbosity: LoggerVerbosity.Detailed,
+                    parameters: "ShowTimestamp;ShowEventId"),
+                new RegisteredLoggerInfo(
+                    "MultiFileLogger",
+                    outputFilePaths: new[] { @"C:\logs\a.log", @"C:\logs\b.log" },
+                    verbosity: LoggerVerbosity.Diagnostic,
+                    parameters: "LogFile=a.log;LogFile=b.log"),
+            });
+
+            Roundtrip(args,
+                e => e.Loggers.Count.ToString(CultureInfo.InvariantCulture),
+                e => string.Join("|", e.Loggers.Select(l => l.LoggerName)),
+                e => string.Join("|", e.Loggers.Select(l => l.Parameters ?? "<null>")),
+                e => string.Join("|", e.Loggers.Select(l => l.Verbosity?.ToString() ?? "<null>")),
+                e => string.Join("|", e.Loggers.Select(l => string.Join(",", l.OutputFilePaths))));
+        }
+
+        [Fact]
         public void RoundtripBuildSubmissionStartedEventArgs()
         {
             var globalVariables = new Dictionary<string, string>
@@ -1038,17 +1065,16 @@ namespace Microsoft.Build.UnitTests
             // Some future data that are not known in current version
             binaryWriter.Write(new byte[] { 1, 2, 3, 4 });
 
-
             int positionAfterFirstEvent = (int)memoryStream.Position;
             memoryStream.Position = 0;
             // event type
-            Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            binaryReader.Read7BitEncodedInt();
             int eventSizePos = (int)memoryStream.Position;
-            int eventSize = Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            int eventSize = binaryReader.Read7BitEncodedInt();
             int positionAfterFirstEventSize = (int)memoryStream.Position;
             memoryStream.Position = eventSizePos;
             // the extra 4 bytes
-            Microsoft.Build.Shared.BinaryWriterExtensions.Write7BitEncodedInt(binaryWriter, eventSize + 4);
+            binaryWriter.Write7BitEncodedInt(eventSize + 4);
             memoryStream.Position.ShouldBe(positionAfterFirstEventSize, "The event size need to be overwritten in place - without overwriting any bytes after the size info");
             memoryStream.Position = positionAfterFirstEvent;
 
@@ -1102,13 +1128,13 @@ namespace Microsoft.Build.UnitTests
             int positionAfterFirstEvent = (int)memoryStream.Position;
             memoryStream.Position = 0;
             // event type
-            Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            binaryReader.Read7BitEncodedInt();
             int eventSizePos = (int)memoryStream.Position;
             memoryStream.Position = 0;
 
             // some future type that is not known in current version
             BinaryLogRecordKind unknownType = (BinaryLogRecordKind)Enum.GetValues(typeof(BinaryLogRecordKind)).Cast<BinaryLogRecordKind>().Select(e => (int)e).Max() + 2;
-            Microsoft.Build.Shared.BinaryWriterExtensions.Write7BitEncodedInt(binaryWriter, (int)unknownType);
+            binaryWriter.Write7BitEncodedInt((int)unknownType);
             memoryStream.Position.ShouldBe(eventSizePos, "The event type need to be overwritten in place - without overwriting any bytes after the type info");
             memoryStream.Position = positionAfterFirstEvent;
 
@@ -1156,8 +1182,8 @@ namespace Microsoft.Build.UnitTests
             int positionAfterFirstEvent = (int)memoryStream.Position;
             memoryStream.Position = 0;
             // event type
-            Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
-            int eventSize = Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            binaryReader.Read7BitEncodedInt();
+            int eventSize = binaryReader.Read7BitEncodedInt();
             // overwrite the entire event with garbage
             binaryWriter.Write(Enumerable.Repeat(byte.MaxValue, eventSize).ToArray());
 
@@ -1208,13 +1234,13 @@ namespace Microsoft.Build.UnitTests
             int positionAfterFirstEvent = (int)memoryStream.Position;
             memoryStream.Position = 0;
             // event type
-            Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            binaryReader.Read7BitEncodedInt();
             int eventSizePos = (int)memoryStream.Position;
-            int eventSize = Microsoft.Build.Shared.BinaryReaderExtensions.Read7BitEncodedInt(binaryReader);
+            int eventSize = binaryReader.Read7BitEncodedInt();
             int positionAfterFirstEventSize = (int)memoryStream.Position;
             memoryStream.Position = eventSizePos;
             // simulate there are 4 bytes less in the future version of the event - while our reader expects those
-            Microsoft.Build.Shared.BinaryWriterExtensions.Write7BitEncodedInt(binaryWriter, eventSize - 4);
+            binaryWriter.Write7BitEncodedInt(eventSize - 4);
             memoryStream.Position.ShouldBe(positionAfterFirstEventSize, "The event size need to be overwritten in place - without overwriting any bytes after the size info");
             // remove the 4 bytes - so that actual size of event is inline with it's written size.
             memoryStream.Position = positionAfterFirstEvent - 4;

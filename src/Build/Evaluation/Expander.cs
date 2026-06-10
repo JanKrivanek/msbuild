@@ -7,10 +7,8 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-#if NET
+#if !FEATURE_MSIOREDIST
 using System.IO;
-#else
-using Microsoft.IO;
 #endif
 using System.Linq;
 using System.Reflection;
@@ -28,11 +26,18 @@ using Microsoft.Build.Shared.FileSystem;
 using Microsoft.NET.StringTools;
 using Microsoft.Win32;
 using AvailableStaticMethods = Microsoft.Build.Internal.AvailableStaticMethods;
-using ItemSpecModifiers = Microsoft.Build.Shared.FileUtilities.ItemSpecModifiers;
+using ItemSpecModifiers = Microsoft.Build.Framework.ItemSpecModifiers;
 using ParseArgs = Microsoft.Build.Evaluation.Expander.ArgumentParser;
 using ReservedPropertyNames = Microsoft.Build.Internal.ReservedPropertyNames;
 using TaskItem = Microsoft.Build.Execution.ProjectItemInstance.TaskItem;
 using TaskItemFactory = Microsoft.Build.Execution.ProjectItemInstance.TaskItem.TaskItemFactory;
+
+#if FEATURE_MSIOREDIST
+// File is intentionally NOT aliased — all typeof() comparisons use fully-qualified
+// System.IO.File to match the types registered in AvailableStaticMethods.
+using Directory = Microsoft.IO.Directory;
+using Path = Microsoft.IO.Path;
+#endif
 
 #nullable disable
 
@@ -243,7 +248,7 @@ namespace Microsoft.Build.Evaluation
             /// Throws <see cref="ObjectDisposedException"/> if this concatenator is already disposed.
             /// </summary>
             private readonly void CheckDisposed() =>
-                ErrorUtilities.VerifyThrowObjectDisposed(!_disposed, nameof(SpanBasedConcatenator));
+                ObjectDisposedException.ThrowIf(_disposed, typeof(SpanBasedConcatenator));
 
             /// <summary>
             /// Lazily initializes <see cref="_builder"/> and populates it with the first value
@@ -491,7 +496,7 @@ namespace Microsoft.Build.Evaluation
                 return String.Empty;
             }
 
-            ErrorUtilities.VerifyThrowInternalNull(elementLocation);
+            Assumed.NotNull(elementLocation);
 
             string result = MetadataExpander.ExpandMetadataLeaveEscaped(expression, _metadata, options, elementLocation, _loggingContext);
             result = PropertyExpander<P>.ExpandPropertiesLeaveEscaped(result, _properties, options, elementLocation, _propertiesUseTracker, _fileSystem);
@@ -512,7 +517,7 @@ namespace Microsoft.Build.Evaluation
                 return String.Empty;
             }
 
-            ErrorUtilities.VerifyThrowInternalNull(elementLocation);
+            Assumed.NotNull(elementLocation);
 
             string metaExpanded = MetadataExpander.ExpandMetadataLeaveEscaped(expression, _metadata, options, elementLocation);
             return PropertyExpander<P>.ExpandPropertiesLeaveTypedAndEscaped(metaExpanded, _properties, options, elementLocation, _propertiesUseTracker, _fileSystem);
@@ -526,7 +531,7 @@ namespace Microsoft.Build.Evaluation
         /// </summary>
         internal SemiColonTokenizer ExpandIntoStringListLeaveEscaped(string expression, ExpanderOptions options, IElementLocation elementLocation)
         {
-            ErrorUtilities.VerifyThrow((options & ExpanderOptions.BreakOnNotEmpty) == 0, "not supported");
+            Assumed.True((options & ExpanderOptions.BreakOnNotEmpty) == 0, "not supported");
 
             return ExpressionShredder.SplitSemiColonSeparatedList(ExpandIntoStringLeaveEscaped(expression, options, elementLocation));
         }
@@ -560,7 +565,7 @@ namespace Microsoft.Build.Evaluation
                 return Array.Empty<T>();
             }
 
-            ErrorUtilities.VerifyThrowInternalNull(elementLocation);
+            Assumed.NotNull(elementLocation);
 
             expression = MetadataExpander.ExpandMetadataLeaveEscaped(expression, _metadata, options, elementLocation);
             expression = PropertyExpander<P>.ExpandPropertiesLeaveEscaped(expression, _properties, options, elementLocation, _propertiesUseTracker, _fileSystem);
@@ -634,7 +639,7 @@ namespace Microsoft.Build.Evaluation
                 return Array.Empty<T>();
             }
 
-            ErrorUtilities.VerifyThrowInternalNull(elementLocation);
+            Assumed.NotNull(elementLocation);
 
             return ItemExpander.ExpandSingleItemVectorExpressionIntoItems(this, expression, _items, itemFactory, options, includeNullItems, out isTransformExpression, elementLocation);
         }
@@ -975,7 +980,7 @@ namespace Microsoft.Build.Evaluation
                         return expression;
                     }
 
-                    ErrorUtilities.VerifyThrow(metadata != null, "Cannot expand metadata without providing metadata");
+                    Assumed.NotNull(metadata, "Cannot expand metadata without providing metadata");
 
                     // PERF NOTE: Regex matching is expensive, so if the string doesn't contain any item metadata references, just bail
                     // out -- pre-scanning the string is actually cheaper than running the Regex, even when there are no matches!
@@ -1145,7 +1150,7 @@ namespace Microsoft.Build.Evaluation
                 _elementLocation = elementLocation;
                 _loggingContext = loggingContext;
 
-                ErrorUtilities.VerifyThrow(options != ExpanderOptions.Invalid, "Must be expanding metadata of some kind");
+                Assumed.NotEqual(options, ExpanderOptions.Invalid, "Must be expanding metadata of some kind");
             }
 
             /// <summary>
@@ -1153,13 +1158,13 @@ namespace Microsoft.Build.Evaluation
             /// </summary>
             internal static string ExpandSingleMetadata(Match itemMetadataMatch, MetadataMatchEvaluator evaluator)
             {
-                ErrorUtilities.VerifyThrow(itemMetadataMatch.Success, "Need a valid item metadata.");
+                Assumed.True(itemMetadataMatch.Success, "Need a valid item metadata.");
 
                 string metadataName = itemMetadataMatch.Groups[RegularExpressions.NameGroup].Value;
 
                 string metadataValue = null;
 
-                bool isBuiltInMetadata = FileUtilities.ItemSpecModifiers.IsItemSpecModifier(metadataName);
+                bool isBuiltInMetadata = ItemSpecModifiers.IsItemSpecModifier(metadataName);
 
                 if (
                     (isBuiltInMetadata && ((evaluator._options & ExpanderOptions.ExpandBuiltInMetadata) != 0)) ||
@@ -1277,7 +1282,7 @@ namespace Microsoft.Build.Evaluation
                     return expression;
                 }
 
-                ErrorUtilities.VerifyThrow(properties != null, "Cannot expand properties without providing properties");
+                Assumed.NotNull(properties, "Cannot expand properties without providing properties");
 
                 // These are also zero-based indices into the expression, but
                 // these tell us where the current property tag begins and ends.
@@ -1713,7 +1718,7 @@ namespace Microsoft.Build.Evaluation
                 }
                 else if (String.Equals(propertyName, ReservedPropertyNames.thisFileDirectory, StringComparison.OrdinalIgnoreCase))
                 {
-                    value = FrameworkFileUtilities.EnsureTrailingSlash(Path.GetDirectoryName(elementLocation.File));
+                    value = FileUtilities.EnsureTrailingSlash(Path.GetDirectoryName(elementLocation.File));
                 }
                 else if (String.Equals(propertyName, ReservedPropertyNames.thisFileDirectoryNoRoot, StringComparison.OrdinalIgnoreCase))
                 {
@@ -1954,7 +1959,7 @@ namespace Microsoft.Build.Evaluation
 
                     ItemTransformFunctions functionType;
 
-                    if (FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(functionName))
+                    if (ItemSpecModifiers.IsDerivableItemSpecModifier(functionName))
                     {
                         functionType = ItemTransformFunctions.ItemSpecModifierFunction;
                     }
@@ -2114,7 +2119,7 @@ namespace Microsoft.Build.Evaluation
                 // with nothing else concatenated to the beginning or end, then proceed
                 // with itemizing it, otherwise error.
                 ProjectErrorUtilities.VerifyThrowInvalidProject(match.Value == expression, elementLocation, "EmbeddedItemVectorCannotBeItemized", expression);
-                ErrorUtilities.VerifyThrow(!matchesEnumerator.MoveNext(), "Expected just one item vector");
+                Assumed.False(matchesEnumerator.MoveNext(), "Expected just one item vector");
 
                 return match;
             }
@@ -2125,7 +2130,7 @@ namespace Microsoft.Build.Evaluation
                 where S : class, IItem
                 where T : class, IItem
             {
-                ErrorUtilities.VerifyThrow(items != null, "Cannot expand items without providing items");
+                Assumed.NotNull(items, "Cannot expand items without providing items");
                 isTransformExpression = false;
                 bool brokeEarlyNonEmpty;
 
@@ -2243,7 +2248,7 @@ namespace Microsoft.Build.Evaluation
                 out List<KeyValuePair<string, S>> itemsFromCapture)
                 where S : class, IItem
             {
-                ErrorUtilities.VerifyThrow(evaluatedItems != null, "Cannot expand items without providing items");
+                Assumed.NotNull(evaluatedItems, "Cannot expand items without providing items");
                 // There's something wrong with the expression, and we ended up with a blank item type
                 ProjectErrorUtilities.VerifyThrowInvalidProject(!string.IsNullOrEmpty(expressionCapture.ItemType), elementLocation, "InvalidFunctionPropertyExpression");
 
@@ -2326,7 +2331,7 @@ namespace Microsoft.Build.Evaluation
                     return expression;
                 }
 
-                ErrorUtilities.VerifyThrow(items != null, "Cannot expand items without providing items");
+                Assumed.NotNull(items, "Cannot expand items without providing items");
 
                 ExpressionShredder.ReferencedItemExpressionsEnumerator matchesEnumerator = ExpressionShredder.GetReferencedItemExpressions(expression);
 
@@ -2553,9 +2558,9 @@ namespace Microsoft.Build.Evaluation
                             // only exist within a target where we can trust the current directory
                             // 2. in single process mode we get the project directory set for the thread
                             string directoryToUse = item.Value.ProjectDirectory ?? FileUtilities.CurrentThreadWorkingDirectory ?? Directory.GetCurrentDirectory();
-                            string definingProjectEscaped = item.Value.GetMetadataValueEscaped(FileUtilities.ItemSpecModifiers.DefiningProjectFullPath);
+                            string definingProjectEscaped = item.Value.GetMetadataValueEscaped(ItemSpecModifiers.DefiningProjectFullPath);
 
-                            result = FileUtilities.ItemSpecModifiers.GetItemSpecModifier(directoryToUse, item.Key, definingProjectEscaped, functionName);
+                            result = ItemSpecModifiers.GetItemSpecModifier(item.Key, functionName, directoryToUse, definingProjectEscaped);
                         }
                         // InvalidOperationException is how GetItemSpecModifier communicates invalid conditions upwards, so
                         // we do not want to rethrow in that case.
@@ -2769,7 +2774,7 @@ namespace Microsoft.Build.Evaluation
                                     // 1. in multiprocess mode we're safe to get the current directory as we'll be running on TaskItems which
                                     // only exist within a target where we can trust the current directory
                                     // 2. in single process mode we get the project directory set for the thread
-                                    string baseDirectoryToUse = item.Value.ProjectDirectory  ?? FileUtilities.CurrentThreadWorkingDirectory ?? String.Empty;
+                                    string baseDirectoryToUse = item.Value.ProjectDirectory ?? FileUtilities.CurrentThreadWorkingDirectory ?? String.Empty;
                                     rootedPath = Path.Combine(baseDirectoryToUse, unescapedPath);
                                 }
 
@@ -3313,7 +3318,7 @@ namespace Microsoft.Build.Evaluation
                     string value = null;
                     try
                     {
-                        if (FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(match.Name))
+                        if (ItemSpecModifiers.IsDerivableItemSpecModifier(match.Name))
                         {
                             // If we're not a ProjectItem or ProjectItemInstance, then ProjectDirectory will be null.
                             // In that case,
@@ -3321,9 +3326,9 @@ namespace Microsoft.Build.Evaluation
                             // only exist within a target where we can trust the current directory
                             // 2. in single process mode we get the project directory set for the thread
                             string directoryToUse = sourceOfMetadata.ProjectDirectory ?? FileUtilities.CurrentThreadWorkingDirectory ?? Directory.GetCurrentDirectory();
-                            string definingProjectEscaped = sourceOfMetadata.GetMetadataValueEscaped(FileUtilities.ItemSpecModifiers.DefiningProjectFullPath);
+                            string definingProjectEscaped = sourceOfMetadata.GetMetadataValueEscaped(ItemSpecModifiers.DefiningProjectFullPath);
 
-                            value = FileUtilities.ItemSpecModifiers.GetItemSpecModifier(directoryToUse, itemSpec, definingProjectEscaped, match.Name);
+                            value = ItemSpecModifiers.GetItemSpecModifier(itemSpec, match.Name, directoryToUse, definingProjectEscaped);
                         }
                         else
                         {
@@ -3941,6 +3946,38 @@ namespace Microsoft.Build.Evaluation
             }
 
             /// <summary>
+            /// Determines whether the argument at <paramref name="argIndex"/> for a System.IO.File
+            /// or System.IO.Directory method is a file/directory path that should be resolved
+            /// against the thread-local working directory.
+            /// </summary>
+            private static bool IsFileOrDirectoryPathArgument(string methodName, int argIndex)
+            {
+                // First argument is always a path for all File/Directory static methods.
+                if (argIndex == 0)
+                {
+                    return true;
+                }
+
+                // Second argument is a destination path for Copy, Move, Replace.
+                // CreateSymbolicLink is intentionally excluded — its arg1 (pathToTarget) is the
+                // symlink target and relative values are semantically meaningful (stored as-is).
+                if (argIndex == 1)
+                {
+                    return string.Equals(methodName, "Copy", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(methodName, "Move", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(methodName, "Replace", StringComparison.OrdinalIgnoreCase);
+                }
+
+                // Third argument is the backup path for Replace.
+                if (argIndex == 2)
+                {
+                    return string.Equals(methodName, "Replace", StringComparison.OrdinalIgnoreCase);
+                }
+
+                return false;
+            }
+
+            /// <summary>
             /// Execute the function on the given instance.
             /// </summary>
             internal object Execute(object objectInstance, IPropertyProvider<T> properties, ExpanderOptions options, IElementLocation elementLocation)
@@ -4005,13 +4042,33 @@ namespace Microsoft.Build.Evaluation
                         {
                             // Unescape the value since we're about to send it out of the engine and into
                             // the function being called. If a file or a directory function, fix the path
-                            if (_receiverType == typeof(File) || _receiverType == typeof(Directory)
-                                || _receiverType == typeof(Path))
+                            // Use fully qualified type names because FEATURE_MSIOREDIST aliases
+                            // Directory and Path to Microsoft.IO.* in this file, but _receiverType
+                            // from AvailableStaticMethods is always System.IO.*.
+                            if (_receiverType == typeof(System.IO.File) || _receiverType == typeof(System.IO.Directory)
+                                || _receiverType == typeof(System.IO.Path))
                             {
-                                argumentValue = FrameworkFileUtilities.FixFilePath(argumentValue);
+                                argumentValue = FileUtilities.FixFilePath(argumentValue);
                             }
 
                             args[n] = EscapingUtilities.UnescapeAll(argumentValue);
+
+                            // In -mt mode, resolve relative path arguments for File/Directory methods
+                            // against the thread-local working directory instead of the process-global
+                            // Environment.CurrentDirectory which may point to a different project's directory.
+                            // In multiprocess mode, CurrentThreadWorkingDirectory is null and
+                            // MakeFullPathFromThreadWorkingDirectory returns null — this is a no-op.
+                            // This must happen AFTER UnescapeAll so that the working directory path
+                            // (a real filesystem path) is not corrupted by MSBuild unescape processing.
+                            if ((_receiverType == typeof(System.IO.File) || _receiverType == typeof(System.IO.Directory))
+                                && IsFileOrDirectoryPathArgument(_methodMethodName, n))
+                            {
+                                AbsolutePath? resolved = FileUtilities.MakeFullPathFromThreadWorkingDirectory((string)args[n]);
+                                if (resolved.HasValue)
+                                {
+                                    args[n] = (string)resolved.GetValueOrDefault();
+                                }
+                            }
                         }
                         else
                         {
@@ -4249,7 +4306,7 @@ namespace Microsoft.Build.Evaluation
                 if (cachedTypeInformation != null)
                 {
                     // We need at least one of these set
-                    ErrorUtilities.VerifyThrow(cachedTypeInformation.Item1 != null || cachedTypeInformation.Item2 != null, "Function type information needs either string or type represented.");
+                    Assumed.True(cachedTypeInformation.Item1 != null || cachedTypeInformation.Item2 != null, "Function type information needs either string or type represented.");
 
                     // If we have the type information in Type form, then just return that
                     if (cachedTypeInformation.Item2 != null)
@@ -4267,7 +4324,7 @@ namespace Microsoft.Build.Evaluation
 
                         // If the type information from the cache is not loadable, it means the cache information got corrupted somehow
                         // Throw here to prevent adding null types in the cache
-                        ErrorUtilities.VerifyThrowInternalNull(receiverType, $"Type information for {typeName} was present in the allowlist cache as {assemblyQualifiedTypeName} but the type could not be loaded.");
+                        Assumed.NotNull(receiverType, $"Type information for {typeName} was present in the allowlist cache as {assemblyQualifiedTypeName} but the type could not be loaded.");
 
                         // If we've used it once, chances are that we'll be using it again
                         // We can record the type here since we know it's available for calling from the fact that is was in the AvailableStaticMethods table

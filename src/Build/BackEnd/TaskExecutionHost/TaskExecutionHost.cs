@@ -231,9 +231,7 @@ namespace Microsoft.Build.BackEnd
             set => _taskFactoryWrapper = value;
         }
 
-#if !NET35
         private HostServices _hostServices;
-#endif
 
 #if FEATURE_APPDOMAIN
         /// <summary>
@@ -273,9 +271,7 @@ namespace Microsoft.Build.BackEnd
 #if FEATURE_APPDOMAIN
             AppDomainSetup appDomainSetup,
 #endif
-#if !NET35
             HostServices hostServices,
-#endif
             bool isOutOfProc,
             CancellationToken cancellationToken,
             TaskEnvironment taskEnvironment)
@@ -292,9 +288,7 @@ namespace Microsoft.Build.BackEnd
 #if FEATURE_APPDOMAIN
             AppDomainSetup = appDomainSetup;
 #endif
-#if !NET35
             _hostServices = hostServices;
-#endif
             IsOutOfProc = isOutOfProc;
             TaskEnvironment = taskEnvironment;
         }
@@ -336,7 +330,7 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         public bool InitializeForBatch(TaskLoggingContext loggingContext, ItemBucket batchBucket, in TaskHostParameters taskIdentityParameters, int scheduledNodeId)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(loggingContext);
+            ArgumentNullException.ThrowIfNull(loggingContext);
 
             _taskLoggingContext = loggingContext;
             _batchBucket = batchBucket;
@@ -399,7 +393,7 @@ namespace Microsoft.Build.BackEnd
 
             TaskInstance.BuildEngine = _buildEngine;
             TaskInstance.HostObject = _taskHost;
-            
+
             if (TaskInstance is IMultiThreadableTask multiThreadableTask)
             {
                 multiThreadableTask.TaskEnvironment = TaskEnvironment;
@@ -419,7 +413,7 @@ namespace Microsoft.Build.BackEnd
         /// <returns>True if the parameters were set correctly, false otherwise.</returns>
         public bool SetTaskParameters(IDictionary<string, (string, ElementLocation)> parameters)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(parameters);
+            ArgumentNullException.ThrowIfNull(parameters);
 
             bool taskInitialized = true;
 
@@ -490,7 +484,7 @@ namespace Microsoft.Build.BackEnd
         /// <returns>True of the outputs were gathered successfully, false otherwise.</returns>
         public bool GatherTaskOutputs(string parameterName, ElementLocation parameterLocation, bool outputTargetIsItem, string outputTargetName)
         {
-            ErrorUtilities.VerifyThrow(_taskFactoryWrapper != null, "Need a taskFactoryWrapper to retrieve outputs from.");
+            Assumed.NotNull(_taskFactoryWrapper, "Need a taskFactoryWrapper to retrieve outputs from.");
 
             bool gatheredGeneratedOutputsSuccessfully = true;
 
@@ -628,7 +622,7 @@ namespace Microsoft.Build.BackEnd
             _taskHost = null;
             CleanupCancellationToken();
 
-            ErrorUtilities.VerifyThrow(TaskInstance == null, "Task Instance should be null");
+            Assumed.Null(TaskInstance, "Task Instance should be null");
         }
 
         /// <summary>
@@ -1002,9 +996,7 @@ namespace Microsoft.Build.BackEnd
                         _buildComponentHost,
                         taskIdentityParameters,
                         _projectFile,
-#if !NET35
                         _hostServices,
-#endif
 #if FEATURE_APPDOMAIN
                         AppDomainSetup,
 #endif
@@ -1370,7 +1362,7 @@ namespace Microsoft.Build.BackEnd
             bool isRequired,
             out bool taskParameterSet)
         {
-            ErrorUtilities.VerifyThrow(parameterValue != null, "Didn't expect null parameterValue in InitializeTaskVectorParameter");
+            Assumed.NotNull(parameterValue, "Didn't expect null parameterValue in InitializeTaskVectorParameter");
 
             taskParameterSet = false;
             bool success;
@@ -1496,14 +1488,13 @@ namespace Microsoft.Build.BackEnd
                             ProjectItemInstance newItem;
 
                             TaskItem outputAsProjectItem = output as TaskItem;
-                            string parameterLocationEscaped = EscapingUtilities.EscapeWithCaching(parameterLocation.File);
+                            string parameterLocationEscaped = EscapingUtilities.Escape(parameterLocation.File, cache: true);
 
                             if (outputAsProjectItem != null)
                             {
                                 // The common case -- all items involved are Microsoft.Build.Execution.ProjectItemInstance.TaskItems.
                                 // Furthermore, because that is true, we know by definition that they also implement ITaskItem2.
-                                // Use the constructor that preserves includeBeforeWildcardExpansionEscaped for RecursiveDir support.
-                                newItem = new ProjectItemInstance(_projectInstance, outputTargetName, outputAsProjectItem.IncludeEscaped, outputAsProjectItem.IncludeBeforeWildcardExpansionEscaped, parameterLocationEscaped);
+                                newItem = new ProjectItemInstance(_projectInstance, outputTargetName, outputAsProjectItem.IncludeEscaped, parameterLocationEscaped);
 
                                 newItem.SetMetadata(outputAsProjectItem.MetadataCollection); // copy-on-write!
                             }
@@ -1742,7 +1733,7 @@ namespace Microsoft.Build.BackEnd
         /// <returns>Gets a list of properties which are required.</returns>
         private IReadOnlyDictionary<string, string> GetNamesOfPropertiesWithRequiredAttribute()
         {
-            ErrorUtilities.VerifyThrow(_taskFactoryWrapper != null, "Expected taskFactoryWrapper to not be null");
+            Assumed.NotNull(_taskFactoryWrapper, "Expected taskFactoryWrapper to not be null");
             IReadOnlyDictionary<string, string> requiredParameters = null;
 
             try
@@ -1820,9 +1811,7 @@ namespace Microsoft.Build.BackEnd
             string resolvedAssemblyLocation = outOfProcTaskFactory.GetAssemblyPath();
 
             // This should never happen - if the factory can create a task, it should know where the assembly is
-            ErrorUtilities.VerifyThrow(
-                !string.IsNullOrEmpty(resolvedAssemblyLocation),
-                $"IOutOfProcTaskFactory {_taskFactoryWrapper.TaskFactory.FactoryName} created a task but returned null/empty assembly path");
+            Assumed.NotNullOrEmpty(resolvedAssemblyLocation, $"IOutOfProcTaskFactory {_taskFactoryWrapper.TaskFactory.FactoryName} created a task but returned null/empty assembly path");
 
             LoadedType taskLoadedType = new LoadedType(
                 taskType,
@@ -1853,9 +1842,7 @@ namespace Microsoft.Build.BackEnd
 #if FEATURE_APPDOMAIN
                 AppDomainSetup,
 #endif
-#if !NET35
                 _hostServices,
-#endif
                 scheduledNodeId,
                 TaskEnvironment);
         }

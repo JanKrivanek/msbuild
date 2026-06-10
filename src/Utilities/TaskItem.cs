@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
@@ -51,8 +51,8 @@ namespace Microsoft.Build.Utilities
         // Values are stored in escaped form.
         private ImmutableDictionary<string, string> _metadata;
 
-        // cache of the fullpath value
-        private string _fullPath;
+        // cache of derivable modifier values
+        private ItemSpecModifiers.Cache _cachedModifiers;
 
         /// <summary>
         /// May be defined if we're copying this item from a pre-existing one.  Otherwise,
@@ -101,9 +101,9 @@ namespace Microsoft.Build.Utilities
             string itemSpec,
             bool treatAsFilePath)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(itemSpec);
+            ArgumentNullException.ThrowIfNull(itemSpec);
 
-            _itemSpec = treatAsFilePath ? FrameworkFileUtilities.FixFilePath(itemSpec) : itemSpec;
+            _itemSpec = treatAsFilePath ? FileUtilities.FixFilePath(itemSpec) : itemSpec;
         }
 
         /// <summary>
@@ -120,7 +120,7 @@ namespace Microsoft.Build.Utilities
             IDictionary itemMetadata) :
             this(itemSpec)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(itemMetadata);
+            ArgumentNullException.ThrowIfNull(itemMetadata);
 
             if (itemMetadata.Count > 0)
             {
@@ -130,7 +130,7 @@ namespace Microsoft.Build.Utilities
                 {
                     // don't import metadata whose names clash with the names of reserved metadata
                     string key = (string)singleMetadata.Key;
-                    if (!FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(key))
+                    if (!ItemSpecModifiers.IsDerivableItemSpecModifier(key))
                     {
                         builder[key] = (string)singleMetadata.Value ?? string.Empty;
                     }
@@ -147,18 +147,18 @@ namespace Microsoft.Build.Utilities
         public TaskItem(
             ITaskItem sourceItem)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(sourceItem);
+            ArgumentNullException.ThrowIfNull(sourceItem);
 
             // Attempt to preserve escaped state
             if (!(sourceItem is ITaskItem2 sourceItemAsITaskItem2))
             {
                 _itemSpec = EscapingUtilities.Escape(sourceItem.ItemSpec);
-                _definingProject = EscapingUtilities.EscapeWithCaching(sourceItem.GetMetadata(FileUtilities.ItemSpecModifiers.DefiningProjectFullPath));
+                _definingProject = EscapingUtilities.Escape(sourceItem.GetMetadata(ItemSpecModifiers.DefiningProjectFullPath), cache: true);
             }
             else
             {
                 _itemSpec = sourceItemAsITaskItem2.EvaluatedIncludeEscaped;
-                _definingProject = sourceItemAsITaskItem2.GetMetadataValueEscaped(FileUtilities.ItemSpecModifiers.DefiningProjectFullPath);
+                _definingProject = sourceItemAsITaskItem2.GetMetadataValueEscaped(ItemSpecModifiers.DefiningProjectFullPath);
             }
 
             sourceItem.CopyMetadataTo(this);
@@ -183,10 +183,10 @@ namespace Microsoft.Build.Utilities
 
             set
             {
-                ErrorUtilities.VerifyThrowArgumentNull(value, nameof(ItemSpec));
+                ArgumentNullException.ThrowIfNull(value, nameof(ItemSpec));
 
-                _itemSpec = FrameworkFileUtilities.FixFilePath(value);
-                _fullPath = null;
+                _itemSpec = FileUtilities.FixFilePath(value);
+                _cachedModifiers.Clear();
             }
         }
 
@@ -204,8 +204,8 @@ namespace Microsoft.Build.Utilities
 
             set
             {
-                _itemSpec = FrameworkFileUtilities.FixFilePath(value);
-                _fullPath = null;
+                _itemSpec = FileUtilities.FixFilePath(value);
+                _cachedModifiers.Clear();
             }
         }
 
@@ -217,7 +217,7 @@ namespace Microsoft.Build.Utilities
         {
             get
             {
-                int count = (_metadata?.Count ?? 0) + FileUtilities.ItemSpecModifiers.All.Length;
+                int count = (_metadata?.Count ?? 0) + ItemSpecModifiers.All.Length;
 
                 var metadataNames = new List<string>(capacity: count);
 
@@ -226,7 +226,10 @@ namespace Microsoft.Build.Utilities
                     metadataNames.AddRange(_metadata.Keys);
                 }
 
-                metadataNames.AddRange(FileUtilities.ItemSpecModifiers.All);
+                foreach (string name in ItemSpecModifiers.All)
+                {
+                    metadataNames.Add(name);
+                }
 
                 return metadataNames;
             }
@@ -236,7 +239,7 @@ namespace Microsoft.Build.Utilities
         /// Gets the number of metadata set on the item.
         /// </summary>
         /// <value>Count of metadata.</value>
-        public int MetadataCount => (_metadata?.Count ?? 0) + FileUtilities.ItemSpecModifiers.All.Length;
+        public int MetadataCount => (_metadata?.Count ?? 0) + ItemSpecModifiers.All.Length;
 
         /// <summary>
         /// Gets the backing metadata dictionary in a serializable wrapper.
@@ -270,8 +273,8 @@ namespace Microsoft.Build.Utilities
         /// <param name="metadataName">Name of metadata to remove.</param>
         public void RemoveMetadata(string metadataName)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(metadataName);
-            ErrorUtilities.VerifyThrowArgument(!FileUtilities.ItemSpecModifiers.IsItemSpecModifier(metadataName),
+            ArgumentNullException.ThrowIfNull(metadataName);
+            ErrorUtilities.VerifyThrowArgument(!ItemSpecModifiers.IsItemSpecModifier(metadataName),
                 "Shared.CannotChangeItemSpecModifiers", metadataName);
 
             _metadata = _metadata?.Remove(metadataName);
@@ -303,11 +306,11 @@ namespace Microsoft.Build.Utilities
             string metadataName,
             string metadataValue)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(metadataName);
+            ArgumentException.ThrowIfNullOrEmpty(metadataName);
 
             // Non-derivable metadata can only be set at construction time.
             // That's why this is IsItemSpecModifier and not IsDerivableItemSpecModifier.
-            ErrorUtilities.VerifyThrowArgument(!FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(metadataName),
+            ErrorUtilities.VerifyThrowArgument(!ItemSpecModifiers.IsDerivableItemSpecModifier(metadataName),
                 "Shared.CannotChangeItemSpecModifiers", metadataName);
 
             _metadata ??= ImmutableDictionaryExtensions.EmptyMetadata;
@@ -337,7 +340,7 @@ namespace Microsoft.Build.Utilities
         /// <param name="destinationItem">The item to copy metadata to.</param>
         public void CopyMetadataTo(ITaskItem destinationItem)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(destinationItem);
+            ArgumentNullException.ThrowIfNull(destinationItem);
 
             // also copy the original item-spec under a "magic" metadata -- this is useful for tasks that forward metadata
             // between items, and need to know the source item where the metadata came from
@@ -487,7 +490,7 @@ namespace Microsoft.Build.Utilities
         /// <returns>The item-spec of the item.</returns>
         public static explicit operator string(TaskItem taskItemToCast)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(taskItemToCast);
+            ArgumentNullException.ThrowIfNull(taskItemToCast);
             return taskItemToCast.ItemSpec;
         }
 
@@ -500,20 +503,17 @@ namespace Microsoft.Build.Utilities
         /// </summary>
         string ITaskItem2.GetMetadataValueEscaped(string metadataName)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(metadataName);
+            ArgumentNullException.ThrowIfNull(metadataName);
 
-            string metadataValue = null;
-
-            if (FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(metadataName))
+            if (ItemSpecModifiers.TryGetDerivableModifierKind(metadataName, out ItemSpecModifierKind modifierKind))
             {
                 // FileUtilities.GetItemSpecModifier is expecting escaped data, which we assume we already are.
                 // Passing in a null for currentDirectory indicates we are already in the correct current directory
-                metadataValue = FileUtilities.ItemSpecModifiers.GetItemSpecModifier(null, _itemSpec, _definingProject, metadataName, ref _fullPath);
+                return ItemSpecModifiers.GetItemSpecModifier(_itemSpec, modifierKind, null, _definingProject, ref _cachedModifiers);
             }
-            else
-            {
-                _metadata?.TryGetValue(metadataName, out metadataValue);
-            }
+
+            string metadataValue = null;
+            _metadata?.TryGetValue(metadataName, out metadataValue);
 
             return metadataValue ?? string.Empty;
         }

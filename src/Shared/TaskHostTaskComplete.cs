@@ -1,10 +1,10 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-#if !CLR2COMPATIBILITY && FEATURE_REPORTFILEACCESSES
+#if FEATURE_REPORTFILEACCESSES
 using Microsoft.Build.Experimental.FileAccess;
 #endif
 using Microsoft.Build.Shared;
@@ -47,7 +47,7 @@ namespace Microsoft.Build.BackEnd
     }
 
     /// <summary>
-    /// TaskHostTaskComplete contains all the information the parent node
+    /// TaskHostTaskComplete contains all the information the owning worker node
     /// needs from the task host on completion of task execution.
     /// </summary>
     internal class TaskHostTaskComplete : INodePacket
@@ -105,7 +105,7 @@ namespace Microsoft.Build.BackEnd
 #endif
             IDictionary<string, string> buildProcessEnvironment)
         {
-            ErrorUtilities.VerifyThrowInternalNull(result);
+            Assumed.NotNull(result);
 
             _taskResult = result.Result;
             _taskException = result.TaskException;

@@ -24,7 +24,6 @@ using Microsoft.Build.Shared;
 using Microsoft.Build.Utilities;
 using Shouldly;
 using Xunit;
-using Xunit.Abstractions;
 using static Microsoft.Build.UnitTests.ObjectModelHelpers;
 using Constants = Microsoft.Build.Framework.Constants;
 
@@ -233,7 +232,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// A simple successful graph build.
         /// </summary>
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/msbuild/issues/4368")]
         public void SimpleGraphBuild()
         {
             string contents = CleanupFileContents(@"
@@ -267,7 +265,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
             propertyValue.ShouldBe("InitialProperty3", StringCompareShould.IgnoreCase);
         }
 
-#if FEATURE_CODETASKFACTORY
         /// <summary>
         /// Verify that the environment between two msbuild calls to the same project are stored
         /// so that on the next call we get access to them
@@ -277,7 +274,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
         {
             string contents1 = CleanupFileContents(@"
 <Project xmlns='msbuildnamespace' ToolsVersion='msbuilddefaulttoolsversion'>
- <UsingTask TaskName='SetEnvv' TaskFactory='CodeTaskFactory' AssemblyFile='$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll' >
+ <UsingTask TaskName='SetEnvv' TaskFactory='RoslynCodeTaskFactory' AssemblyFile='$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll' >
                             <Task>
                                 <Code Language='cs'>
                                     System.Environment.SetEnvironmentVariable(""MOO"", ""When the dawn comes, tonight will be a memory too"");
@@ -315,7 +312,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(BuildResultCode.Success, result.OverallResult);
             _logger.AssertLogContains("What does a cat say : When the dawn comes, tonight will be a memory too");
         }
-#endif
 
         /// <summary>
         /// Verify if idle nodes are shutdown when BuildManager.ShutdownAllNodes is evoked.
@@ -1001,7 +997,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             logger.AssertLogContains(normalMessage);
             logger.AssertLogContains(lowMessage);
 
-            var deferredMessages = logger.BuildMessageEvents.Where(e => e.Message.StartsWith("deferred")).ToArray();
+            var deferredMessages = logger.BuildMessageEvents.Where(e => e.Message.StartsWith("deferred", StringComparison.Ordinal)).ToArray();
 
             deferredMessages.Length.ShouldBe(3);
 
@@ -4221,7 +4217,6 @@ $@"<Project InitialTargets=`Sleep`>
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/msbuild/issues/4368")]
         public void GraphBuildValid()
         {
             string project1 = _env.CreateFile(".proj").Path;
@@ -4304,7 +4299,6 @@ $@"<Project InitialTargets=`Sleep`>
         }
 
         [Fact]
-        [ActiveIssue("https://github.com/dotnet/msbuild/issues/4368")]
         public void GraphBuildFail()
         {
             string project1 = _env.CreateFile(".proj").Path;
@@ -4484,6 +4478,228 @@ $@"<Project InitialTargets=`Sleep`>
             Assert.Equal(BuildResultCode.Failure, result.OverallResult);
 
             _logger.AssertLogContains("MSB4040");
+        }
+
+        /// <summary>
+        /// Verifies that MT mode builds with multiple projects referencing the same dependency
+        /// with different target sets do not crash with "Results for configuration X were not
+        /// retrieved from node Y" (GitHub issue #13188).
+        ///
+        /// The bug: in MT mode, BuildRequestConfiguration.ResultsNodeId is shared across all
+        /// in-proc nodes. When multiple nodes need to build different targets of the same config,
+        /// the results cache can't fully resolve the request, so the scheduler assigns it to a
+        /// new node. That node's BuildProject() sees ResultsNodeId pointing to the original node
+        /// and enters the results transfer block, which races on ResultsNodeId when multiple
+        /// nodes do this concurrently.
+        ///
+        /// The fix: skip the results transfer block entirely in MT mode, since all in-proc nodes
+        /// share the same ConfigCache and ResultsCache — results are already accessible.
+        ///
+        /// This test forces the scenario by having multiple parallel projects reference the same
+        /// dependency with DIFFERENT target sets, causing cache misses that force the scheduler
+        /// to assign the same config to different nodes.
+        /// </summary>
+        [Fact]
+        public void MultiThreadedBuild_SharedConfiguration_DoesNotCrash()
+        {
+            // Shared dependency project with multiple targets.
+            // Different parent projects will request different target combinations,
+            // causing partial cache misses that force re-scheduling on different nodes.
+            var sharedDep = _env.CreateFile(".proj").Path;
+            var projRoot = _env.CreateFile(".proj").Path;
+
+            // Create many parallel referencing projects to maximize the chance of
+            // scheduling the same config on different nodes.
+            const int projectCount = 8;
+            var childProjects = new string[projectCount];
+            for (int i = 0; i < projectCount; i++)
+            {
+                childProjects[i] = _env.CreateFile(".proj").Path;
+            }
+
+            // The shared dep has multiple targets. Each parent project requests a different
+            // combination so the cache can't satisfy the request from a previous build.
+            string sharedDepContents = CleanupFileContents("""
+                <Project ToolsVersion=`msbuilddefaulttoolsversion`>
+                  <Target Name="TargetA">
+                    <Message Text="TargetA built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetB">
+                    <Message Text="TargetB built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetC">
+                    <Message Text="TargetC built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetD">
+                    <Message Text="TargetD built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetE">
+                    <Message Text="TargetE built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetF">
+                    <Message Text="TargetF built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetG">
+                    <Message Text="TargetG built" Importance="High" />
+                  </Target>
+                  <Target Name="TargetH">
+                    <Message Text="TargetH built" Importance="High" />
+                  </Target>
+                </Project>
+                """);
+            File.WriteAllText(sharedDep, sharedDepContents);
+
+            // Each child project requests a different cumulative set of targets from the shared dep.
+            // Child 0: TargetA
+            // Child 1: TargetA;TargetB  (cache has TargetA but not TargetB → miss → re-schedule)
+            // Child 2: TargetA;TargetB;TargetC  (cache has A,B but not C → miss → re-schedule)
+            // etc.
+            // This forces the scheduler to schedule the shared dep's config on different nodes
+            // each time a new target is needed, triggering the ResultsNodeId != currentNodeId check.
+            string[] targetNames = ["TargetA", "TargetB", "TargetC", "TargetD", "TargetE", "TargetF", "TargetG", "TargetH"];
+            for (int i = 0; i < projectCount; i++)
+            {
+                string targets = string.Join(";", targetNames.Take(i + 1));
+                string childContents = CleanupFileContents($"""
+                    <Project ToolsVersion=`msbuilddefaulttoolsversion`>
+                      <Target Name="Build">
+                        <MSBuild Projects="{sharedDep}" Targets="{targets}" />
+                        <Message Text="Child{i} built" Importance="High" />
+                      </Target>
+                    </Project>
+                    """);
+                File.WriteAllText(childProjects[i], childContents);
+            }
+
+            // Root project builds all children in parallel, maximizing the chance that multiple
+            // nodes simultaneously need the shared dependency with different target sets.
+            string allChildProjects = string.Join(";", childProjects);
+            string rootContents = CleanupFileContents($"""
+                <Project ToolsVersion=`msbuilddefaulttoolsversion`>
+                  <Target Name="Build">
+                    <MSBuild Projects="{allChildProjects}" BuildInParallel="true" />
+                  </Target>
+                </Project>
+                """);
+            File.WriteAllText(projRoot, rootContents);
+
+            var buildParameters = new BuildParameters
+            {
+                MaxNodeCount = 8,
+                EnableNodeReuse = false,
+                MultiThreaded = true,
+                DisableInProcNode = false,
+                // MT mode needs SaveOperatingEnvironment=false to allow multiple in-proc nodes.
+                // With it enabled, the operating environment semaphore limits to one in-proc node.
+                SaveOperatingEnvironment = false,
+                Loggers = [_logger],
+            };
+
+            var data = new BuildRequestData(projRoot, new Dictionary<string, string>(), null,
+                ["Build"], null);
+
+            // Use DefaultBuildManager for MT mode (needs proper in-proc node setup).
+            BuildManager.DefaultBuildManager.Dispose();
+            BuildResult result = BuildManager.DefaultBuildManager.Build(buildParameters, data);
+
+            result.OverallResult.ShouldBe(BuildResultCode.Success);
+
+            // Verify all targets of the shared dep were built.
+            foreach (string target in targetNames)
+            {
+                _logger.AssertLogContains($"{target} built");
+            }
+
+            // Verify all child projects completed.
+            for (int i = 0; i < projectCount; i++)
+            {
+                _logger.AssertLogContains($"Child{i} built");
+            }
+        }
+
+        /// <summary>
+        /// Regression test: when MSBUILDDEBUGSCHEDULER is enabled in multithreaded (-mt) mode,
+        /// multiple in-proc node engines write trace output to the same EngineTrace_{PID}.txt file.
+        /// Previously, each engine used lock(this) which only serialized within one instance,
+        /// allowing concurrent FileStream opens with FileShare.Read. The IOException fatally crashed
+        /// the ActionBlock work queue, silently dropping subsequent request completions and causing
+        /// a deadlock.
+        ///
+        /// The fix uses a static lock across all engine instances so a single trace file is safe,
+        /// and catches non-critical exceptions so trace failures can never crash the build engine.
+        /// </summary>
+        [Fact(Timeout = 30_000)]
+        public async System.Threading.Tasks.Task MultiThreadedBuild_WithDebugSchedulerTracing_DoesNotDeadlock()
+        {
+            await System.Threading.Tasks.Task.Run(() =>
+            {
+                string debugPath = _env.CreateFolder().Path;
+                _env.SetEnvironmentVariable("MSBUILDDEBUGSCHEDULER", "1");
+                _env.SetEnvironmentVariable("MSBUILDDEBUGPATH", debugPath);
+                FrameworkDebugUtils.SetDebugPath();
+
+                // Create a root project that builds several independent child projects in parallel.
+                // This forces multiple in-proc nodes to run concurrently, which triggers
+                // concurrent TraceEngine() calls.
+                const int childCount = 4;
+                string[] childPaths = new string[childCount];
+
+                string childContent = CleanupFileContents("""
+                    <Project ToolsVersion=`msbuilddefaulttoolsversion`>
+                      <Target Name="Build">
+                        <Message Text="Child built" Importance="High" />
+                      </Target>
+                    </Project>
+                    """);
+
+                for (int i = 0; i < childCount; i++)
+                {
+                    childPaths[i] = _env.CreateFile(".proj").Path;
+                    File.WriteAllText(childPaths[i], childContent);
+                }
+
+                string rootContent = CleanupFileContents($"""
+                    <Project ToolsVersion=`msbuilddefaulttoolsversion`>
+                      <Target Name="Build">
+                        <MSBuild Projects="{string.Join(";", childPaths)}" BuildInParallel="true" />
+                        <Message Text="Root completed" Importance="High" />
+                      </Target>
+                    </Project>
+                    """);
+
+                string rootPath = _env.CreateFile(".proj").Path;
+                File.WriteAllText(rootPath, rootContent);
+
+                var buildParameters = new BuildParameters
+                {
+                    MaxNodeCount = childCount + 1,
+                    EnableNodeReuse = false,
+                    MultiThreaded = true,
+                    DisableInProcNode = false,
+                    SaveOperatingEnvironment = false,
+                    Loggers = [_logger],
+                };
+
+                var data = new BuildRequestData(rootPath, new Dictionary<string, string>(), null,
+                    ["Build"], null);
+
+                BuildManager.DefaultBuildManager.Dispose();
+                BuildResult result = BuildManager.DefaultBuildManager.Build(buildParameters, data);
+
+                result.OverallResult.ShouldBe(BuildResultCode.Success);
+                _logger.AssertLogContains("Root completed");
+
+                // Verify that scheduler tracing actually produced at least one non-empty trace file
+                // in the configured debug directory.
+                string[] traceFiles = Directory.GetFiles(debugPath, "EngineTrace_*.txt");
+                traceFiles.ShouldNotBeEmpty("Expected at least one EngineTrace_*.txt file to be created in the debug directory.");
+
+                bool hasNonEmptyTraceFile = traceFiles
+                    .Select(path => new FileInfo(path))
+                    .Any(info => info.Length > 0);
+
+                hasNonEmptyTraceFile.ShouldBeTrue("Expected at least one EngineTrace_*.txt file to contain trace data.");
+            });
         }
     }
 }

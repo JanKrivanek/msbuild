@@ -227,7 +227,6 @@ namespace Microsoft.Build.UnitTests
             unquoteParameters.ShouldBeTrue();
         }
 
-#if FEATURE_NODE_REUSE
         [Theory]
         [InlineData("nr")]
         [InlineData("NR")]
@@ -249,7 +248,6 @@ namespace Microsoft.Build.UnitTests
             missingParametersErrorMessage.ShouldNotBeNull();
             unquoteParameters.ShouldBeTrue();
         }
-#endif
 
         [Fact]
         public void ProjectSwitchIdentificationTests()
@@ -1135,6 +1133,7 @@ namespace Microsoft.Build.UnitTests
             using (TestEnvironment env = TestEnvironment.Create())
             {
                 env.SetEnvironmentVariable("MSBUILDDISABLEFEATURESFROMVERSION", "17.10");
+                ChangeWaves.ResetStateForTests();
 
                 CommandLineSwitches switches = new CommandLineSwitches();
                 switches.SetParameterizedSwitch(CommandLineSwitches.ParameterizedSwitch.Target, "/t:Clean;Build", "\"Clean;Build\"", true, true, false);
@@ -1254,7 +1253,6 @@ namespace Microsoft.Build.UnitTests
             Assert.True(switches.HaveAnySwitchesBeenSet());
         }
 
-#if FEATURE_NODE_REUSE
         /// <summary>
         /// /nodereuse:false /nodereuse:true should result in "true"
         /// </summary>
@@ -1276,7 +1274,6 @@ namespace Microsoft.Build.UnitTests
 
             Assert.False(nodeReuse);
         }
-#endif
 
         /// <summary>
         /// Regress DDB #143341:
@@ -1620,8 +1617,8 @@ namespace Microsoft.Build.UnitTests
             const string otherLineLeadingSpaces = "                     ";
             const string examplesLeadingSpaces = "        ";
 
-            foreach (KeyValuePair<string, string> item in resourceManager.GetResourceSet(CultureInfo.CurrentUICulture, createIfNotExists: true, tryParents: true)
-                .Cast<DictionaryEntry>().Where(i => i.Key is string && ((string)i.Key).StartsWith("HelpMessage_"))
+            foreach (KeyValuePair<string, string> item in resourceManager.GetResourceSet(CultureInfo.InvariantCulture, createIfNotExists: true, tryParents: true)
+                .Cast<DictionaryEntry>().Where(i => i.Key is string && ((string)i.Key).StartsWith("HelpMessage_", StringComparison.Ordinal))
                 .Select(i => new KeyValuePair<string, string>((string)i.Key, (string)i.Value)))
             {
                 string[] helpMessageLines = item.Value.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
@@ -1635,7 +1632,7 @@ namespace Microsoft.Build.UnitTests
 
                     if (i == 0)
                     {
-                        if (trimmedLine.StartsWith("-") || trimmedLine.StartsWith("@"))
+                        if (trimmedLine.StartsWith("-", StringComparison.Ordinal) || trimmedLine.StartsWith("@", StringComparison.Ordinal))
                         {
                             // If the first line in a switch it needs a certain amount of leading spaces
                             Assert.StartsWith(switchLeadingSpaces, helpMessageLines[i]);
@@ -1643,7 +1640,7 @@ namespace Microsoft.Build.UnitTests
                         else
                         {
                             // Otherwise it should have no leading spaces because it's a section
-                            Assert.False(helpMessageLines[i].StartsWith(" "));
+                            Assert.False(helpMessageLines[i].StartsWith(" ", StringComparison.Ordinal));
                         }
                     }
                     else
@@ -1656,7 +1653,7 @@ namespace Microsoft.Build.UnitTests
                                 // Examples require a certain number of leading spaces
                                 Assert.StartsWith(examplesLeadingSpaces, helpMessageLines[i]);
                             }
-                            else if (trimmedLine.StartsWith("-") || trimmedLine.StartsWith("@"))
+                            else if (trimmedLine.StartsWith("-", StringComparison.Ordinal) || trimmedLine.StartsWith("@", StringComparison.Ordinal))
                             {
                                 // Switches require a certain number of leading spaces
                                 Assert.StartsWith(switchLeadingSpaces, helpMessageLines[i]);
